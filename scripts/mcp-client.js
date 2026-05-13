@@ -460,8 +460,9 @@ export async function prewarmSessions() {
   // contentMcp, governanceMcp, experienceProductionMcp need JCR/site-specific auth (Connect AEM).
   // contentQaMcp: restricted to @adobe.com identities with specific entitlement — lazy-init.
   // sitesOptimizerMcp: needs user token with Sites Optimizer entitlement — lazy-init.
+  // discoveryMcp: moved to lazy-init — returning 421 from upstream on new accounts.
   const critical = [
-    discoveryMcp, fireflyMcp, daMcp, contentGenMcp,
+    fireflyMcp, daMcp, contentGenMcp,
   ];
   const results = await Promise.allSettled(critical.map(async (c) => {
     await c.initSession();
