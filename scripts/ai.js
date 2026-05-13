@@ -28,7 +28,7 @@ import { checkCitationReadability, formatResultForChat, renderResultsHTML } from
 
 const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://amazon-compass-worker.compass-xsc.workers.dev';
 const CLAUDE_API = `${AMAZON_WORKER_BASE}/bedrock/invoke`;
-const MODEL = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+const MODEL = 'anthropic.claude-opus-4-7';
 const STORAGE_KEY = 'ew-claude-key';
 const HTML_TRUNCATE_THRESHOLD = 15000;
 
