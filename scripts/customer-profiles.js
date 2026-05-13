@@ -15,7 +15,7 @@ export const PROFILES = {
   'amazon-retail': {
     id: 'amazon-retail',
     name: 'Amazon Retail',
-    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Amazon_icon.svg/512px-Amazon_icon.svg.png',
+    logoUrl: '/icons/amazon-icon.svg',
     orgId: 'amazon',
     repo: 'amazon-retail',
     branch: 'main',
@@ -245,7 +245,7 @@ export const PROFILES = {
   'amazon-advertising': {
     id: 'amazon-advertising',
     name: 'Amazon Advertising',
-    logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4a/Amazon_icon.svg/512px-Amazon_icon.svg.png',
+    logoUrl: '/icons/amazon-icon.svg',
     orgId: 'amazon-ads',
     repo: 'amazon-advertising',
     branch: 'main',
