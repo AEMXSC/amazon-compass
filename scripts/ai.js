@@ -3627,27 +3627,46 @@ export async function executeTool(name, input) {
         const requestedModel = input.model || 'firefly-image-3';
 
         // Parallel: fetch current page HTML + generate image simultaneously
+        // fireflyMcp errors are caught as soft objects — we always try the worker fallback
         let [currentHTML, ffResult] = await Promise.all([
           da.getPage(htmlPath).catch(() => null),
           fireflyMcp.callTool('firefly_generate_image', {
             prompt: input.prompt, model: requestedModel, ...dims, numImages: 1,
             ...(input.seed && { seed: input.seed }),
-          }),
+          }).catch(err => ({ error: err.message })),
         ]);
 
-        // Fallback: 3P model unauthorized → retry with firefly-image-3
+        // Fallback: 3P model unauthorized → retry with firefly-image-3 via MCP
         if (ffResult?.error && /unauthorized/i.test(ffResult.error) && requestedModel !== 'firefly-image-3') {
           ffResult = await fireflyMcp.callTool('firefly_generate_image', {
             prompt: input.prompt, model: 'firefly-image-3', ...dims, numImages: 1,
             ...(input.seed && { seed: input.seed }),
+          }).catch(err => ({ error: err.message }));
+        }
+
+        let imageUrl = ffResult?.images?.[0]?.imageUrl || ffResult?.images?.[0]?.url;
+        let modelUsed = ffResult?.model || requestedModel;
+        let seedUsed = ffResult?.images?.[0]?.seed;
+
+        // Worker fallback: Firefly MCP unavailable → call worker /firefly-image directly
+        if (!imageUrl) {
+          const workerBody = { prompt: input.prompt };
+          if (dims.width) workerBody.width = dims.width;
+          if (dims.height) workerBody.height = dims.height;
+          const wResp = await fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(workerBody),
           });
+          const wResult = await wResp.json();
+          if (wResult.imageUrl) {
+            imageUrl = wResult.imageUrl;
+            modelUsed = wResult.model || 'firefly-image-3';
+          } else {
+            return JSON.stringify({ error: `Firefly generation failed: ${ffResult?.error || wResult.error || 'No image returned'}`, _source: 'error' });
+          }
         }
 
-        if (ffResult?.error) {
-          return JSON.stringify({ error: `Firefly generation failed: ${ffResult.error}`, _source: 'error' });
-        }
-
-        const imageUrl = ffResult?.images?.[0]?.imageUrl || ffResult?.images?.[0]?.url;
         if (!imageUrl) {
           return JSON.stringify({ error: 'Firefly returned no image URL', raw: ffResult, _source: 'error' });
         }
@@ -3713,8 +3732,8 @@ export async function executeTool(name, input) {
           page_path: pagePath,
           image_url: imageUrl,
           alt_text: altText,
-          model_used: ffResult?.model || requestedModel,
-          seed: ffResult?.images?.[0]?.seed,
+          model_used: modelUsed,
+          seed: seedUsed,
           preview_url: previewUrl,
           preview_status: previewStatus,
           source: 'Adobe Firefly + DA Admin API',
