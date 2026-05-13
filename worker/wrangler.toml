@@ -14,7 +14,7 @@ bucket_name = "amazon-compass-images"
 
 # Deploy:  npx wrangler deploy
 #
-# Adobe IMS Secrets (for AEM MCP tools):
+# Adobe IMS Secrets (shared by MCP tools + Firefly image generation):
 #   npx wrangler secret put IMS_CLIENT_ID
 #   npx wrangler secret put IMS_CLIENT_SECRET
 #   npx wrangler secret put COMPASS_OAUTH_SECRET
@@ -32,9 +32,7 @@ bucket_name = "amazon-compass-images"
 #   npx wrangler secret put AWS_REGION              (e.g. us-east-1)
 #   npx wrangler secret put KENDRA_INDEX_ID         (Amazon Kendra Index ID from AWS Console)
 #
-# Adobe Firefly REST API (for /firefly-image route):
-#   npx wrangler secret put FIREFLY_CLIENT_ID
-#   npx wrangler secret put FIREFLY_CLIENT_SECRET
+# Note: Firefly uses IMS_CLIENT_ID + IMS_CLIENT_SECRET (no separate Firefly secrets needed)
 #
 # Callback URLs (register in developer consoles):
 #   GitHub: https://amazon-compass-worker.<account>.workers.dev/github/callback

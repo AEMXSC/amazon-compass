@@ -1409,8 +1409,12 @@ async function handleBedrockInvoke(request, env) {
 
 async function handleFireflyImage(request, env) {
   const origin = request.headers.get('Origin') || '';
-  if (!env.FIREFLY_CLIENT_ID || !env.FIREFLY_CLIENT_SECRET) {
-    return new Response(JSON.stringify({ error: 'Firefly credentials not configured. Run: npx wrangler secret put FIREFLY_CLIENT_ID' }), {
+
+  // Reuse the same IMS credentials as the MCP servers — no separate Firefly secrets needed
+  const clientId = env.IMS_CLIENT_ID;
+  const clientSecret = env.IMS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return new Response(JSON.stringify({ error: 'IMS credentials not configured (IMS_CLIENT_ID / IMS_CLIENT_SECRET)' }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
   }
@@ -1429,13 +1433,13 @@ async function handleFireflyImage(request, env) {
     });
   }
 
-  // Get Firefly access token via client credentials
+  // Get Firefly access token using existing IMS client credentials
   const tokenResp = await fetch('https://ims-na1.adobelogin.com/ims/token/v3', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: env.FIREFLY_CLIENT_ID,
-      client_secret: env.FIREFLY_CLIENT_SECRET,
+      client_id: clientId,
+      client_secret: clientSecret,
       grant_type: 'client_credentials',
       scope: 'openid,AdobeID,firefly_enterprise,firefly_api',
     }),
@@ -1453,7 +1457,7 @@ async function handleFireflyImage(request, env) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': env.FIREFLY_CLIENT_ID,
+      'x-api-key': clientId,
       'Authorization': `Bearer ${access_token}`,
     },
     body: JSON.stringify({
