@@ -26,7 +26,7 @@ import { buildPlaybookPrompt } from './xsc-playbook.js';
 import { buildKnowledgePrompt } from './aem-knowledge.js';
 import { checkCitationReadability, formatResultForChat, renderResultsHTML } from './llmo-checker.js';
 
-const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://amazon-compass-worker.compass-xsc.workers.dev';
+const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://compass-ims-proxy.compass-xsc.workers.dev';
 const CLAUDE_API = `${AMAZON_WORKER_BASE}/bedrock/invoke`;
 const MODEL = 'anthropic.claude-opus-4-7';
 const STORAGE_KEY = 'ew-claude-key';
