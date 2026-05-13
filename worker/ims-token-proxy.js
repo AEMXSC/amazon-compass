@@ -2181,7 +2181,12 @@ async function handleBedrockInvoke(request, env) {
           try {
             const payload = JSON.parse(new TextDecoder().decode(buf.slice(payloadStart, payloadEnd)));
             if (payload.bytes) {
-              const chunk = JSON.parse(atob(payload.bytes));
+              // atob gives a binary string (1 char = 1 byte) — must decode as UTF-8
+              // to preserve multi-byte characters like emoji correctly
+              const binary = atob(payload.bytes);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+              const chunk = JSON.parse(new TextDecoder('utf-8').decode(bytes));
               await writer.write(enc.encode(`data: ${JSON.stringify(chunk)}\n\n`));
             }
           } catch { /* skip malformed frames */ }
