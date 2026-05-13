@@ -513,7 +513,7 @@ async function handleMcpProxy(request, env) {
       'Mcp-Session-Id': sessionId,
       'Access-Control-Allow-Origin': origin || '*',
       'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id, x-api-key, anthropic-version, anthropic-dangerous-direct-browser-access',
       'Access-Control-Expose-Headers': 'Mcp-Session-Id',
       'Access-Control-Allow-Credentials': 'true',
     },
@@ -1638,7 +1638,7 @@ function corsHeaders(origin) {
   return {
     'Access-Control-Allow-Origin': allowed,
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, Mcp-Session-Id, x-api-key, anthropic-version, anthropic-dangerous-direct-browser-access',
     'Access-Control-Max-Age': '86400',
   };
 }
@@ -2113,15 +2113,22 @@ async function sigV4Headers(method, urlStr, body, service, region, accessKeyId, 
 async function handleBedrockInvoke(request, env) {
   const origin = request.headers.get('Origin') || '';
   const region = env.AWS_REGION || 'us-east-1';
-  const body = await request.text();
-  const { model } = JSON.parse(body);
-  const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(model)}/invoke-with-response-stream`;
-  const headers = await sigV4Headers('POST', bedrockUrl, body, 'bedrock', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
+  const parsed = await request.json();
+  const { model, ...rest } = parsed;
 
-  const bedrockResp = await fetch(bedrockUrl, { method: 'POST', headers, body });
+  // Bedrock requires anthropic_version in body (not header), and model is in the URL path
+  const bedrockBody = JSON.stringify({
+    anthropic_version: 'bedrock-2023-05-31',
+    ...rest,
+  });
+
+  const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(model)}/invoke-with-response-stream`;
+  const headers = await sigV4Headers('POST', bedrockUrl, bedrockBody, 'bedrock', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
+
+  const bedrockResp = await fetch(bedrockUrl, { method: 'POST', headers, body: bedrockBody });
   if (!bedrockResp.ok) {
-    const err = await bedrockResp.text();
-    return new Response(JSON.stringify({ error: `Bedrock ${bedrockResp.status}`, detail: err }), {
+    const errText = await bedrockResp.text();
+    return new Response(JSON.stringify({ error: { message: `Bedrock ${bedrockResp.status}: ${errText}` } }), {
       status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
   }
