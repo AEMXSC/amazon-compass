@@ -249,23 +249,39 @@ textarea:focus-visible,
 }
 
 .amazon-logo {
-  width: 28px;
-  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .amazon-logo svg {
-  width: 24px;
-  height: 20px;
+  width: 72px;
+  height: 44px;
+}
+
+.header-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  line-height: 1;
 }
 
 .header-title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.header-subtitle {
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.2;
 }
 
 .customer-logo {
@@ -1258,7 +1274,7 @@ textarea:focus-visible,
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: linear-gradient(135deg, #4a5cdb 0%, #6366f1 100%);
+  background: linear-gradient(135deg, #EC7211 0%, #d96b0e 100%);
   border: none;
   border-radius: 6px;
   color: #fff;
@@ -1481,7 +1497,7 @@ textarea:focus-visible,
 .message.assistant .agent-name {
   font-size: 13px;
   font-weight: 700;
-  color: var(--accent-light, #818cf8);
+  color: var(--accent-light, var(--accent-light));
 }
 
 .message.assistant .agent-role {
@@ -1503,7 +1519,7 @@ textarea:focus-visible,
 }
 
 .message.assistant .agent-tag.adobe { color: #e34850; border-color: color-mix(in srgb, #e34850 40%, transparent); background: color-mix(in srgb, #e34850 8%, transparent); }
-.message.assistant .agent-tag.mcp { color: var(--accent-light, #818cf8); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.message.assistant .agent-tag.mcp { color: var(--accent-light, var(--accent-light)); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .message.assistant .agent-tag.da { color: #22c55e; border-color: color-mix(in srgb, #22c55e 40%, transparent); background: color-mix(in srgb, #22c55e 8%, transparent); }
 .message.assistant .agent-tag.time { color: var(--text-muted); border-color: var(--border); background: transparent; font-weight: 400; }
 
@@ -2832,7 +2848,7 @@ textarea:focus-visible,
 }
 
 .tool-thinking-line {
-  color: var(--accent-light, #818cf8);
+  color: var(--accent-light, var(--accent-light));
   font-size: 13px;
   padding: 4px 0;
   animation: thinking-pulse 1.5s ease-in-out infinite;
@@ -2884,7 +2900,7 @@ textarea:focus-visible,
   font-size: 13.5px;
   font-weight: 600;
   margin: 10px 0 4px;
-  color: var(--accent-light, #818cf8);
+  color: var(--accent-light, var(--accent-light));
 }
 .stream-bubble h4, .chat-bubble h4 {
   font-size: 13px;
@@ -2902,7 +2918,7 @@ textarea:focus-visible,
   color: var(--text-primary);
 }
 .stream-bubble li::marker {
-  color: var(--accent-light, #818cf8);
+  color: var(--accent-light, var(--accent-light));
 }
 .stream-bubble strong, .chat-bubble strong {
   color: var(--text-primary);
@@ -2931,7 +2947,7 @@ textarea:focus-visible,
 
 .tool-group-thinking {
   font-size: 12px;
-  color: var(--accent-light, #818cf8);
+  color: var(--accent-light, var(--accent-light));
   padding: 0 12px;
   height: 0;
   overflow: hidden;
@@ -3211,7 +3227,7 @@ textarea:focus-visible,
 }
 
 .asset-status.firefly {
-  background: linear-gradient(135deg, #6366f1, #a855f7);
+  background: linear-gradient(135deg, #EC7211, #d96b0e);
   color: #fff;
 }
 
@@ -3229,7 +3245,7 @@ textarea:focus-visible,
 }
 
 .firefly-thumb {
-  background-color: color-mix(in srgb, #6366f1 15%, var(--bg-secondary));
+  background-color: color-mix(in srgb, var(--accent) 15%, var(--bg-secondary));
 }
 
 .firefly-thumb::before {
