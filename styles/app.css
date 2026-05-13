@@ -259,9 +259,11 @@ textarea:focus-visible,
 
 .amazon-logo-img {
   height: 32px;
-  width: auto;
+  width: 32px;
   object-fit: contain;
-  filter: brightness(0) invert(1);
+  border-radius: 6px;
+  background: #FF9900;
+  padding: 3px;
 }
 
 .header-title-block {
