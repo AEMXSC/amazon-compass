@@ -1948,7 +1948,7 @@ const TIER2_KEYWORDS = {
   assets:       ['search_dam_assets', 'search_content_fragments', 'browse_dam_folder'],            // find/browse
   dam_metadata: ['get_asset_metadata', 'update_asset_metadata', 'get_asset_renditions', 'check_asset_expiry'], // inspect/rights
   dam_write:    ['upload_asset', 'delete_asset', 'move_asset', 'copy_asset', 'create_dam_folder', 'add_to_collection'], // mutate
-  images: ['generate_image', 'generate_and_insert_image', 'generate_image_variations', 'edit_image_with_firefly', 'transform_image', 'create_image_renditions'],
+  images: ['generate_image', 'generate_and_insert_image', 'generate_amazon_image', 'generate_image_variations', 'edit_image_with_firefly', 'transform_image', 'create_image_renditions'],
   research: ['web_search'],
   journey: ['create_journey', 'generate_journey_content', 'get_journey_status', 'analyze_journey_conflicts'],
   experiment: ['setup_experiment', 'get_experiment_status', 'analyze_experiment', 'create_ab_test', 'get_personalization_offers'],
@@ -6611,6 +6611,10 @@ export function isSimpleEdit(msg) {
 
   // THINKING brain: analysis, audits, strategy, discovery — needs full 35KB prompt
   if (/\b(analyze|audit|governance|brand\s*check|compliance|personali[sz]|strategy|compare|explain|how|why|what\s+is|tell\s+me\s+about|search\s+for|find\s+assets|list\s+all|generate\s+report|plan\s+for)\b/i.test(lower)) return false;
+
+  // Image generation always needs full brain — must offer Firefly vs Titan choice + multi-step flow
+  if (/\b(generat|creat|replac|chang|updat|swap|new).{0,30}\b(image|photo|hero|banner|visual|picture)\b/i.test(lower)) return false;
+  if (/\b(image|photo|hero|banner|visual|picture).{0,30}\b(generat|replac|chang|updat|swap|more\s+engag)\b/i.test(lower)) return false;
 
   // OPERATIONS brain: actions, edits, fixes, creates, publishes
   // Direct edits
