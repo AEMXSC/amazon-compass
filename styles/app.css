@@ -261,6 +261,9 @@ textarea:focus-visible,
   height: 32px;
   width: 32px;
   object-fit: contain;
+  background: #ffffff;
+  border-radius: 6px;
+  padding: 4px;
 }
 
 .header-title-block {
