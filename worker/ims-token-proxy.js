@@ -48,6 +48,8 @@ const ALLOWED_ORIGINS = [
   'https://eds-migration--compass--aemxsc.aem.page',
   'https://main--compass--aemxsc.aem.live',
   'https://compass.aemxsc.com',
+  'https://main--amazon-compass--aemxsc.aem.page',
+  'https://main--amazon-compass--aemxsc.aem.live',
 ];
 
 // Allowed return-to base URLs (must start with one of these)
@@ -60,6 +62,8 @@ const ALLOWED_RETURN_URLS = [
   'https://eds-migration--compass--aemxsc.aem.page/',
   'https://main--compass--aemxsc.aem.live/',
   'https://compass.aemxsc.com/',
+  'https://main--amazon-compass--aemxsc.aem.page/',
+  'https://main--amazon-compass--aemxsc.aem.live/',
 ];
 
 // Cache the S2S token in memory (lives as long as the Worker instance)
