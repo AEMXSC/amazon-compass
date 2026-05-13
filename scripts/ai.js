@@ -3590,37 +3590,22 @@ export async function executeTool(name, input) {
         const previewUrl = `https://${branch}--${repo.toLowerCase()}--${org.toLowerCase()}.aem.page${pagePath}`;
 
         const dims = snapFireflySize(input.width, input.height);
-        const requestedModel = input.model || 'firefly-image-3';
 
         // Parallel: fetch current page HTML + generate image simultaneously
-        let [currentHTML, ffResult] = await Promise.all([
+        const [currentHTML, titanResult] = await Promise.all([
           da.getPage(htmlPath).catch(() => null),
-          fireflyMcp.callTool('firefly_generate_image', {
-            prompt: input.prompt,
-            model: requestedModel,
-            ...dims,
-            numImages: 1,
-            ...(input.seed && { seed: input.seed }),
-          }),
+          fetch(`${AMAZON_WORKER_BASE}/titan-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: input.prompt, width: dims.width, height: dims.height }),
+          }).then((r) => r.json()),
         ]);
 
-        // Fallback: 3P model unauthorized → retry with firefly-image-3
-        if (ffResult?.error && /unauthorized/i.test(ffResult.error) && requestedModel !== 'firefly-image-3') {
-          console.log(`[generate_and_insert_image] ${requestedModel} unauthorized — retrying with firefly-image-3`);
-          ffResult = await fireflyMcp.callTool('firefly_generate_image', {
-            prompt: input.prompt,
-            model: 'firefly-image-3',
-            ...dims,
-            numImages: 1,
-            ...(input.seed && { seed: input.seed }),
-          });
+        if (titanResult?.error) {
+          return JSON.stringify({ error: `Titan generation failed: ${titanResult.error}`, _source: 'error' });
         }
 
-        if (ffResult?.error) {
-          return JSON.stringify({ error: `Firefly generation failed: ${ffResult.error}`, _source: 'error' });
-        }
-
-        const imageUrl = ffResult?.images?.[0]?.imageUrl || ffResult?.images?.[0]?.url;
+        const imageUrl = titanResult?.imageUrl;
         if (!imageUrl) {
           return JSON.stringify({ error: 'Firefly returned no image URL', raw: ffResult, _source: 'error' });
         }

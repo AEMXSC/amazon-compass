@@ -172,6 +172,9 @@ async function route(request, env) {
   if (url.pathname === '/firefly-image' && request.method === 'POST') {
     return handleFireflyImage(request, env);
   }
+  if (url.pathname === '/titan-image' && request.method === 'POST') {
+    return handleTitanImage(request, env);
+  }
   if (url.pathname === '/kendra-search' && request.method === 'POST') {
     return handleKendraSearch(request, env);
   }
@@ -2119,7 +2122,7 @@ async function handleBedrockInvoke(request, env) {
   // Strip fields Bedrock rejects: model goes in URL path, stream is implied by endpoint name
   const { model: rawModel, stream, ...rest } = parsed;
   // Hardcoded for testing — override whatever ai.js sends (AEM CDN caches ai.js aggressively)
-  const model = 'us.anthropic.claude-3-5-haiku-20241022-v1:0';
+  const model = 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
   // Bedrock requires anthropic_version in body (not header), and model is in the URL path
   const bedrockBody = JSON.stringify({
@@ -2242,6 +2245,71 @@ async function handleFireflyImage(request, env) {
   return new Response(JSON.stringify({
     imageUrl: `${new URL(request.url).origin}/img/${imageKey}`,
     mimeType, model: 'firefly-image-3', provider: 'firefly',
+  }), { headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) } });
+}
+
+/* ─── POST /titan-image — Generate image via Amazon Titan, store in R2 ─── */
+
+async function handleTitanImage(request, env) {
+  const origin = request.headers.get('Origin') || '';
+  const region = env.AWS_REGION || 'us-east-1';
+
+  let prompt, width, height;
+  try { ({ prompt, width = 1024, height = 1024 } = await request.json()); } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+      status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+  if (!prompt) return new Response(JSON.stringify({ error: 'Missing prompt' }), {
+    status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+  });
+
+  // Titan v2 only accepts specific dimension pairs — snap to nearest valid size
+  const VALID_SIZES = [
+    [1024, 1024], [768, 768], [512, 512],
+    [1152, 896], [1216, 832], [1344, 768], [1536, 640],
+    [896, 1152], [832, 1216], [768, 1344], [640, 1536],
+  ];
+  const [w, h] = VALID_SIZES.reduce((best, [cw, ch]) => {
+    return (Math.abs(cw - width) + Math.abs(ch - height)) < (Math.abs(best[0] - width) + Math.abs(best[1] - height)) ? [cw, ch] : best;
+  }, VALID_SIZES[0]);
+
+  const titanBody = JSON.stringify({
+    taskType: 'TEXT_IMAGE',
+    textToImageParams: { text: prompt },
+    imageGenerationConfig: { numberOfImages: 1, width: w, height: h, quality: 'standard', cfgScale: 8.0 },
+  });
+
+  const modelId = 'amazon.titan-image-generator-v2:0';
+  const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
+  const headers = await sigV4Headers('POST', bedrockUrl, titanBody, 'bedrock', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
+
+  const resp = await fetch(bedrockUrl, { method: 'POST', headers, body: titanBody });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    return new Response(JSON.stringify({ error: `Titan ${resp.status}: ${errText}` }), {
+      status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  const result = await resp.json();
+  const imageB64 = result.images?.[0];
+  if (!imageB64) return new Response(JSON.stringify({ error: 'Titan returned no image' }), {
+    status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+  });
+
+  // Decode base64 PNG and store in R2 for a stable public URL
+  const binaryStr = atob(imageB64);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  const imageKey = `titan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
+  await env.IMAGES.put(imageKey, bytes, { httpMetadata: { contentType: 'image/png' } });
+
+  return new Response(JSON.stringify({
+    imageUrl: `${new URL(request.url).origin}/img/${imageKey}`,
+    mimeType: 'image/png',
+    model: 'amazon.titan-image-generator-v2:0',
+    provider: 'titan',
   }), { headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) } });
 }
 
