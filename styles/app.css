@@ -63,7 +63,7 @@ body > main > .section > div {
   --bg-card-hover: #1b232d;
   --bg-input: #161d26;         /* colorBackgroundInputDefault */
   --bg-sidebar: #0f141a;       /* colorBackgroundHomeHeader */
-  --bg-header: #FF9900;        /* Amazon orange — logo shows naturally on this */
+  --bg-header: #131921;        /* amazon.com dark navy */
   --border: #424650;           /* colorBorderDividerDefault */
   --border-light: #656871;     /* colorBorderInputDefault */
   --border-focus: #EC7211;     /* Amazon orange for focus — overrides CloudScape blue */
@@ -261,6 +261,7 @@ textarea:focus-visible,
   height: 32px;
   width: 32px;
   object-fit: contain;
+  filter: invert(1) hue-rotate(180deg);
 }
 
 .header-title-block {
@@ -274,7 +275,7 @@ textarea:focus-visible,
 .header-title {
   font-size: 18px;
   font-weight: 700;
-  color: #111111;
+  color: #ffffff;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
@@ -282,7 +283,7 @@ textarea:focus-visible,
 .header-subtitle {
   font-size: 12px;
   font-weight: 700;
-  color: #333333;
+  color: #cccccc;
   letter-spacing: 0;
   white-space: nowrap;
 }
