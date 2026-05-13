@@ -223,7 +223,7 @@ textarea:focus-visible,
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
 }
 
 .hamburger-btn {
