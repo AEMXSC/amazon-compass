@@ -14,8 +14,8 @@
 // separate module instances with separate state — causing shared state (like DA org/repo)
 // to be invisible across modules. Cache busting is handled by app.js?v=N in index.html only.
 import { loadIms, isSignedIn, signIn, signOut, getProfile, getToken, getAuthMethod, fetchUserProfile, getActiveOrg, getUserOrgs, signInMcpOAuth, getMcpToken, initS2SToken } from './ims.js';
-import * as ai from './ai.js?v=161';
-import { TOOL_AGENT_MAP } from './ai.js?v=161';
+import * as ai from './ai.js?v=162';
+import { TOOL_AGENT_MAP } from './ai.js?v=162';
 import * as da from './da-client.js';
 import * as gov from './governance.js';
 import { getActiveProfile, getOrgConfig, setActiveProfile, listProfiles, addCustomProfile, deleteCustomProfile, buildProfilePrompt } from './customer-profiles.js';
@@ -292,7 +292,6 @@ const AGENT_ICONS = {
   'Web Research': '🔗',
   'Adobe Agent': '◆',
   'Compass': '🧭',
-  'Amazon Titan': '🌄',
   'Amazon Kendra': '🔎',
   'Amazon Rekognition': '👁',
 };
@@ -316,7 +315,6 @@ const AGENT_ROLES = {
   'LLM Optimizer': 'AI Readiness',
   'Adobe Agent': 'AEM Cloud Service',
   'Compass': 'AI Navigator',
-  'Amazon Titan': 'Image Generation',
   'Amazon Kendra': 'Enterprise Search',
   'Amazon Rekognition': 'Computer Vision',
 };
@@ -334,7 +332,6 @@ const AGENT_COLORS = {
   'Development Agent': '#14b8a6',
   'Adobe Agent': '#e34850',
   'Compass': '#818cf8',
-  'Amazon Titan': '#EC7211',
   'Amazon Kendra': '#EC7211',
   'Amazon Rekognition': '#EC7211',
 };
@@ -346,7 +343,7 @@ function buildAgentHeader(agentName) {
   const color = AGENT_COLORS[agentName] || 'var(--accent-light, #818cf8)';
   const isAdobe = ['Adobe Agent', 'Admin API', 'Site Management', 'AEM Assets API'].includes(agentName);
   const isMcp = ['Analytics Agent', 'Journey Agent', 'Audience Agent', 'Target Agent', 'Data Insights Agent'].includes(agentName);
-  const isAmazon = ['Amazon Titan', 'Amazon Kendra', 'Amazon Rekognition'].includes(agentName);
+  const isAmazon = ['Amazon Kendra', 'Amazon Rekognition'].includes(agentName);
 
   let tags = '';
   if (isAdobe) tags += '<span class="agent-tag adobe">Adobe</span>';
@@ -6999,7 +6996,7 @@ async function init() {
   buildOrgSelector();
   initProfileGenerator();
 
-  console.log('[Compass] init v152');
+  console.log('[Compass] init v153');
 
   // Detect MCP token delivered via URL hash by the connect-aem helper script
   // Hash format: #mcp_token=TOKEN&mcp_refresh=REFRESH
