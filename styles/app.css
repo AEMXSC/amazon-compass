@@ -55,40 +55,41 @@ body > main > .section > div {
 }
 
 :root {
-  /* Amazon CloudScape Dark Palette — cloudscape.design */
-  --bg-primary: #0f1b2d;
-  --bg-secondary: #192534;
-  --bg-card: #1c2b3a;
-  --bg-card-hover: #203040;
-  --bg-input: #192534;
-  --bg-sidebar: #161d2e;
-  --bg-header: #232f3e;
-  --border: #2d3748;
-  --border-light: #374151;
-  --border-focus: #EC7211;
+  /* CloudScape Design System — Dark Mode (cloudscape.design / cloudscape-design/components)
+     Token values from @cloudscape-design/design-tokens@3.0.86 visual-refresh dark */
+  --bg-primary: #161d26;       /* colorBackgroundLayoutMain */
+  --bg-secondary: #1b232d;     /* colorBackgroundDropdownItemDefault */
+  --bg-card: #161d26;          /* colorBackgroundContainerContent */
+  --bg-card-hover: #1b232d;
+  --bg-input: #161d26;         /* colorBackgroundInputDefault */
+  --bg-sidebar: #0f141a;       /* colorBackgroundHomeHeader */
+  --bg-header: #0f141a;        /* colorBackgroundHomeHeader */
+  --border: #424650;           /* colorBorderDividerDefault */
+  --border-light: #656871;     /* colorBorderInputDefault */
+  --border-focus: #EC7211;     /* Amazon orange for focus — overrides CloudScape blue */
 
-  /* Text */
-  --text-primary: #e8eaed;
-  --text-secondary: #9aa0b4;
-  --text-muted: #8a8fa6;
-  --text-disabled: #6b7084;
+  /* Text — colorText* tokens */
+  --text-primary: #ebebf0;     /* colorTextHeadingDefault */
+  --text-secondary: #c6c6cd;   /* colorTextBodyDefault */
+  --text-muted: #656871;       /* colorTextDisabled */
+  --text-disabled: #656871;    /* colorTextInteractiveDisabled */
 
-  /* Accent — CloudScape action orange */
+  /* Accent — Amazon brand orange (FF9900 consumer / EC7211 CloudScape action) */
   --accent: #EC7211;
   --accent-rgb: 236, 114, 17;
   --accent-hover: #d96b0e;
   --accent-light: #f89f68;
   --accent-dim: rgba(236, 114, 17, 0.15);
 
-  /* Semantic */
-  --green: #34d399;
-  --green-dim: rgba(52, 211, 153, 0.15);
-  --red: #ef4444;
-  --red-dim: rgba(239, 68, 68, 0.1);
-  --yellow: #fbbf24;
-  --yellow-dim: rgba(251, 191, 36, 0.15);
-  --orange: #f59e0b;
-  --danger-red: #e1251b;
+  /* Semantic — CloudScape status colors */
+  --green: #2bb534;            /* colorTextStatusSuccess */
+  --green-dim: rgba(43, 181, 52, 0.15);
+  --red: #ff7a7a;              /* colorTextStatusError */
+  --red-dim: rgba(255, 122, 122, 0.1);
+  --yellow: #fbd332;           /* colorTextStatusWarning */
+  --yellow-dim: rgba(251, 211, 50, 0.15);
+  --orange: #EC7211;
+  --danger-red: #ff7a7a;       /* colorTextStatusError */
 
   /* Sizes */
   --sidebar-width: 52px;
@@ -98,9 +99,9 @@ body > main > .section > div {
   --radius-lg: 12px;
   --radius-xl: 16px;
 
-  /* Fonts */
-  --font-sans: 'Amazon Ember', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'Source Code Pro', 'SF Mono', 'Fira Code', monospace;
+  /* Fonts — CloudScape uses Open Sans; we keep Amazon Ember as primary */
+  --font-sans: 'Amazon Ember', 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: Monaco, Menlo, Consolas, 'Courier Prime', Courier, monospace;
 }
 
 html, body {
@@ -253,35 +254,38 @@ textarea:focus-visible,
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  margin-right: 4px;
 }
 
 .amazon-logo svg {
-  width: 72px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
 }
 
 .header-title-block {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 1px;
   line-height: 1;
 }
 
 .header-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   color: var(--text-primary);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .header-subtitle {
   font-size: 9px;
   font-weight: 400;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
   text-transform: uppercase;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .customer-logo {
