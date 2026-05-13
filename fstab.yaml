@@ -1,4 +1,4 @@
 mountpoints:
   /:
-    url: https://content.da.live/AEMXSC/amazon-compass
+    url: https://content.da.live/AEMXSC/compass
     type: markup
