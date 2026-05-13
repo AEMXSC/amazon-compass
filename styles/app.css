@@ -261,6 +261,7 @@ textarea:focus-visible,
   height: 32px;
   width: auto;
   object-fit: contain;
+  mix-blend-mode: screen;
 }
 
 .header-title-block {
