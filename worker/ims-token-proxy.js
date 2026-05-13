@@ -2090,7 +2090,9 @@ async function sigV4Headers(method, urlStr, body, service, region, accessKeyId, 
   const payloadHash = await hash(body);
   const canonicalHeaders = `content-type:application/json\nhost:${url.host}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'content-type;host;x-amz-date';
-  const canonicalRequest = [method, url.pathname, url.search.slice(1), canonicalHeaders, signedHeaders, payloadHash].join('\n');
+  // AWS SigV4: encode each path segment individually so : → %3A, but / separators are kept
+  const canonicalUri = url.pathname.split('/').map((s) => encodeURIComponent(s)).join('/');
+  const canonicalRequest = [method, canonicalUri, url.search.slice(1), canonicalHeaders, signedHeaders, payloadHash].join('\n');
   const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
   const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, await hash(canonicalRequest)].join('\n');
 
@@ -2114,7 +2116,11 @@ async function handleBedrockInvoke(request, env) {
   const origin = request.headers.get('Origin') || '';
   const region = env.AWS_REGION || 'us-east-1';
   const parsed = await request.json();
-  const { model, ...rest } = parsed;
+  // Strip fields Bedrock rejects: model goes in URL path, stream is implied by endpoint name
+  const { model: rawModel, stream, ...rest } = parsed;
+  // Ensure cross-region inference prefix — required for Claude 3.5+ and 4.x on Bedrock
+  const baseModel = (rawModel || 'anthropic.claude-3-5-sonnet-20241022-v2:0').replace(/^(us\.)?/, '');
+  const model = `us.${baseModel}`;
 
   // Bedrock requires anthropic_version in body (not header), and model is in the URL path
   const bedrockBody = JSON.stringify({
@@ -2122,7 +2128,9 @@ async function handleBedrockInvoke(request, env) {
     ...rest,
   });
 
-  const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(model)}/invoke-with-response-stream`;
+  // Do NOT encodeURIComponent here — Cloudflare's URL parser would then double-encode % → %25
+  // giving %253A instead of %3A. Raw : in a URL path is valid; sigV4Headers encodes it correctly.
+  const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${model}/invoke-with-response-stream`;
   const headers = await sigV4Headers('POST', bedrockUrl, bedrockBody, 'bedrock', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
 
   const bedrockResp = await fetch(bedrockUrl, { method: 'POST', headers, body: bedrockBody });
