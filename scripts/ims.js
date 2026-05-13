@@ -25,10 +25,12 @@ const IMS_REDIRECT_URI = (() => {
     'https://eds-migration--compass--aemxsc.aem.page',
     'https://main--compass--aemxsc.aem.page',
     'https://main--compass--aemxsc.aem.live',
+    'https://main--amazon-compass--aemxsc.aem.page',
+    'https://main--amazon-compass--aemxsc.aem.live',
     'http://localhost:3000',
     'http://localhost:3001',
   ];
-  return knownOrigins.includes(origin) ? `${origin}/` : 'https://eds-migration--compass--aemxsc.aem.page/';
+  return knownOrigins.includes(origin) ? `${origin}/` : `${origin}/`;
 })();
 // Clear legacy proxy URL so both ims.js and mcp-client.js fall back to the current worker
 try {
