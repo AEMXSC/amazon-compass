@@ -273,18 +273,18 @@ textarea:focus-visible,
 }
 
 .header-title {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: #ffffff;
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
 
 .header-subtitle {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--text-muted);
-  letter-spacing: 0.02em;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
