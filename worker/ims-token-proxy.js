@@ -2301,19 +2301,28 @@ async function handleTitanImage(request, env) {
 
   const modelId = 'amazon.nova-canvas-v1:0';
   const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
-  const headers = await sigV4Headers('POST', bedrockUrl, titanBody, 'bedrock', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
 
-  const resp = await fetch(bedrockUrl, { method: 'POST', headers, body: titanBody });
+  // Retry up to 4x with exponential backoff — new AWS accounts have ~2 RPM quota on Nova Canvas
+  let resp, lastErr;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (attempt > 0) await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt))); // 2s, 4s, 8s
+    const headers = await sigV4Headers('POST', bedrockUrl, titanBody, 'bedrock', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
+    resp = await fetch(bedrockUrl, { method: 'POST', headers, body: titanBody });
+    if (resp.status !== 429) break;
+    lastErr = `Nova Canvas rate-limited (attempt ${attempt + 1})`;
+    console.warn(`[Nova Canvas] 429 on attempt ${attempt + 1}, retrying...`);
+  }
+
   if (!resp.ok) {
     const errText = await resp.text();
-    return new Response(JSON.stringify({ error: `Titan ${resp.status}: ${errText}` }), {
+    return new Response(JSON.stringify({ error: `Nova Canvas ${resp.status}: ${errText}` }), {
       status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
   }
 
   const result = await resp.json();
   const imageB64 = result.images?.[0];
-  if (!imageB64) return new Response(JSON.stringify({ error: 'Titan returned no image' }), {
+  if (!imageB64) return new Response(JSON.stringify({ error: 'Nova Canvas returned no image' }), {
     status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
 
