@@ -1937,6 +1937,8 @@ const TIER1_CORE = new Set([
   'search_dam_assets',
   // Utility
   'fetch_url', 'batch_aem_update',
+  // Image generation — always available so provider choice (Titan vs Firefly) works on any prompt
+  'generate_amazon_image', 'generate_and_insert_image',
 ]);
 
 const TIER2_KEYWORDS = {
@@ -5725,10 +5727,11 @@ These tools write to the real Document Authoring API. The user must be signed in
 
 ### Image Generation
 
-**Two providers available — both return public URLs ready for EDS insertion:**
+**Two providers — ALWAYS ask user which to use before calling any tool:**
 
-- **generate_image** — **DEFAULT. Use this first for ALL image generation.** Adobe Firefly via Amazon Compass Worker. Photorealistic, brand-ready. Supports page_path for direct page insertion.
-- **generate_and_insert_image** — Firefly via MCP with full model selection. Use when you need explicit model control.
+- **generate_amazon_image** — **Amazon Titan on AWS Bedrock.** Use when user selects Titan/Amazon/AWS. Requires prompt + page_path.
+- **generate_and_insert_image** — **Adobe Firefly.** Use when user selects Firefly/Adobe. Requires prompt + page_path.
+- **generate_image** — Legacy Firefly fallback. Use ONLY when generate_and_insert_image fails and user insists on Firefly.
 - **generate_image_variations** — Firefly only, returns URL without inserting.
 - **edit_image_with_firefly** — Image-to-image transform with reference URL. 3P models only.
 
@@ -6727,7 +6730,8 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
     const compassTools = getToolsForPrompt(promptText);
     // Hide raw Firefly tools — brain must use generate_and_insert_image / generate_image_variations wrappers
     // Hide raw Firefly generate tools only — diagnostics (check_credits, list_models) stay visible
-    const FIREFLY_RAW_TOOLS = new Set(['firefly_generate_image', 'firefly-generate-image', 'firefly_image_to_image', 'firefly-image-to-image']);
+    // Also hide MCP's 'generate_image' — our TIER1 version takes precedence; MCP one bypasses Titan routing
+    const FIREFLY_RAW_TOOLS = new Set(['firefly_generate_image', 'firefly-generate-image', 'firefly_image_to_image', 'firefly-image-to-image', 'generate_image']);
     const mcpTools = getAllMcpClaudeTools().filter((t) => !FIREFLY_RAW_TOOLS.has(t.name));
     const mcpNames = new Set([
       ...mcpTools.map((t) => t.name),
