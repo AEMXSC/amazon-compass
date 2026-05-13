@@ -5452,7 +5452,7 @@ export async function executeTool(name, input) {
 
 // Amazon knowledge base — fetched at module load and appended to system prompt
 let AMAZON_CONTEXT = '';
-fetch('/scripts/amazon-context.md').then((r) => r.text()).then((t) => { AMAZON_CONTEXT = t; }).catch(() => {});
+fetch('/scripts/amazon-context.txt').then((r) => r.text()).then((t) => { AMAZON_CONTEXT = t; }).catch(() => {});
 
 const AEM_SYSTEM_PROMPT = `You are **Amazon Experience Manager Compass** — an expert AI agent embedded in Amazon's AEM content operations interface. You understand Amazon's ecosystem, AWS services, and internal vocabulary.
 

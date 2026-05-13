@@ -2118,9 +2118,8 @@ async function handleBedrockInvoke(request, env) {
   const parsed = await request.json();
   // Strip fields Bedrock rejects: model goes in URL path, stream is implied by endpoint name
   const { model: rawModel, stream, ...rest } = parsed;
-  // Ensure cross-region inference prefix — required for Claude 3.5+ and 4.x on Bedrock
-  const baseModel = (rawModel || 'anthropic.claude-3-5-sonnet-20241022-v2:0').replace(/^(us\.)?/, '');
-  const model = `us.${baseModel}`;
+  // Hardcoded for testing — override whatever ai.js sends (AEM CDN caches ai.js aggressively)
+  const model = 'us.anthropic.claude-3-5-haiku-20241022-v1:0';
 
   // Bedrock requires anthropic_version in body (not header), and model is in the URL path
   const bedrockBody = JSON.stringify({
