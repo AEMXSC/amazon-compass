@@ -266,9 +266,10 @@ textarea:focus-visible,
 
 .header-title-block {
   display: flex;
-  flex-direction: column;
-  gap: 1px;
-  line-height: 1;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  white-space: nowrap;
 }
 
 .header-title {
@@ -276,17 +277,14 @@ textarea:focus-visible,
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: -0.02em;
-  line-height: 1.2;
   white-space: nowrap;
 }
 
 .header-subtitle {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 400;
   color: var(--text-muted);
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  line-height: 1.2;
+  letter-spacing: 0.02em;
   white-space: nowrap;
 }
 
