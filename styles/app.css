@@ -1526,6 +1526,7 @@ textarea:focus-visible,
 .message.assistant .agent-tag.mcp { color: var(--accent-light, var(--accent-light)); border-color: color-mix(in srgb, var(--accent) 40%, transparent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
 .message.assistant .agent-tag.da { color: #22c55e; border-color: color-mix(in srgb, #22c55e 40%, transparent); background: color-mix(in srgb, #22c55e 8%, transparent); }
 .message.assistant .agent-tag.time { color: var(--text-muted); border-color: var(--border); background: transparent; font-weight: 400; }
+.message.assistant .agent-tag.amazon { color: #EC7211; border-color: color-mix(in srgb, #EC7211 40%, transparent); background: color-mix(in srgb, #EC7211 8%, transparent); }
 
 @keyframes msgIn {
   from { opacity: 0; transform: translateY(8px); }

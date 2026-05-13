@@ -894,8 +894,25 @@ const AEM_TOOLS = [
   },
 
   {
+    name: 'generate_amazon_image',
+    description: 'Amazon Titan Image + Page Insert — Generate an image using Amazon Titan Image Generator (running on AWS Bedrock) and insert it into a DA page. Use when the user explicitly requests Amazon or AWS image generation. Photorealistic, runs entirely within Amazon infrastructure.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Narrative prose description of the image to generate. Full sentences with subject, setting, lighting, color palette, photography style.' },
+        page_path: { type: 'string', description: 'Page path to update (e.g. "/partner-with-us"). Must be a DA-backed EDS page.' },
+        image_selector: { type: 'string', description: 'Which image to replace: "hero" (default — replaces first picture/img in page), "first", or a partial alt text / class hint.' },
+        alt_text: { type: 'string', description: 'Alt text for the new image. Defaults to a short version of the prompt.' },
+        width: { type: 'number', description: 'Image width. Snapped to nearest valid Titan dimension.' },
+        height: { type: 'number', description: 'Image height. Snapped to nearest valid Titan dimension.' },
+      },
+      required: ['prompt', 'page_path'],
+    },
+  },
+
+  {
     name: 'generate_and_insert_image',
-    description: 'Firefly Image + Page Insert — Generate an Adobe Firefly image and insert it into a DA page in one call. DEFAULT tool for all image generation requests. Photorealistic, brand-ready, no extra entitlement required.',
+    description: 'Adobe Firefly Image + Page Insert — Generate an Adobe Firefly image and insert it into a DA page in one call. Use when the user explicitly requests Firefly or Adobe image generation. Photorealistic, brand-ready.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1784,7 +1801,8 @@ export const TOOL_AGENT_MAP = {
   edit_image_with_firefly: 'Content Optimization Agent',
   generate_image: 'Experience Production Agent',
   generate_and_insert_image: 'Experience Production Agent',
-  web_search: 'Discovery Agent',
+  generate_amazon_image: 'Amazon Titan',
+  web_search: 'Amazon Kendra',
   transform_image: 'Content Optimization Agent',
   create_image_renditions: 'Content Optimization Agent',
 
@@ -3590,22 +3608,30 @@ export async function executeTool(name, input) {
         const previewUrl = `https://${branch}--${repo.toLowerCase()}--${org.toLowerCase()}.aem.page${pagePath}`;
 
         const dims = snapFireflySize(input.width, input.height);
+        const requestedModel = input.model || 'firefly-image-3';
 
         // Parallel: fetch current page HTML + generate image simultaneously
-        const [currentHTML, titanResult] = await Promise.all([
+        let [currentHTML, ffResult] = await Promise.all([
           da.getPage(htmlPath).catch(() => null),
-          fetch(`${AMAZON_WORKER_BASE}/titan-image`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: input.prompt, width: dims.width, height: dims.height }),
-          }).then((r) => r.json()),
+          fireflyMcp.callTool('firefly_generate_image', {
+            prompt: input.prompt, model: requestedModel, ...dims, numImages: 1,
+            ...(input.seed && { seed: input.seed }),
+          }),
         ]);
 
-        if (titanResult?.error) {
-          return JSON.stringify({ error: `Titan generation failed: ${titanResult.error}`, _source: 'error' });
+        // Fallback: 3P model unauthorized → retry with firefly-image-3
+        if (ffResult?.error && /unauthorized/i.test(ffResult.error) && requestedModel !== 'firefly-image-3') {
+          ffResult = await fireflyMcp.callTool('firefly_generate_image', {
+            prompt: input.prompt, model: 'firefly-image-3', ...dims, numImages: 1,
+            ...(input.seed && { seed: input.seed }),
+          });
         }
 
-        const imageUrl = titanResult?.imageUrl;
+        if (ffResult?.error) {
+          return JSON.stringify({ error: `Firefly generation failed: ${ffResult.error}`, _source: 'error' });
+        }
+
+        const imageUrl = ffResult?.images?.[0]?.imageUrl || ffResult?.images?.[0]?.url;
         if (!imageUrl) {
           return JSON.stringify({ error: 'Firefly returned no image URL', raw: ffResult, _source: 'error' });
         }
@@ -3675,13 +3701,99 @@ export async function executeTool(name, input) {
           seed: ffResult?.images?.[0]?.seed,
           preview_url: previewUrl,
           preview_status: previewStatus,
-          source: 'Firefly MCP + DA Admin API',
+          source: 'Adobe Firefly + DA Admin API',
           message: `Image generated and inserted into ${pagePath}. Preview refreshing at ${previewUrl}`,
           _action: 'refresh_preview',
           _preview_path: pagePath,
         }, null, 2);
       } catch (err) {
         return mcpError('generate_and_insert_image', err);
+      }
+    }
+
+    case 'generate_amazon_image': {
+      if (!(await ensureAuth())) return authRequiredError('generate_amazon_image');
+      { const noSite = requireDaSite(); if (noSite) return noSite; }
+      try {
+        const pagePath = sanitizePath(input.page_path);
+        const htmlPath = (pagePath === '/' ? '/index' : pagePath) + '.html';
+        const org = da.getOrg();
+        const repo = da.getRepo();
+        const branch = da.getBranch();
+        const previewUrl = `https://${branch}--${repo.toLowerCase()}--${org.toLowerCase()}.aem.page${pagePath}`;
+        const dims = snapFireflySize(input.width, input.height);
+
+        const [currentHTML, titanResult] = await Promise.all([
+          da.getPage(htmlPath).catch(() => null),
+          fetch(`${AMAZON_WORKER_BASE}/titan-image`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: input.prompt, width: dims.width, height: dims.height }),
+          }).then((r) => r.json()),
+        ]);
+
+        if (titanResult?.error) {
+          return JSON.stringify({ error: `Titan generation failed: ${titanResult.error}`, _source: 'error' });
+        }
+        const imageUrl = titanResult?.imageUrl;
+        if (!imageUrl) {
+          return JSON.stringify({ error: 'Titan returned no image URL', raw: titanResult, _source: 'error' });
+        }
+        if (!currentHTML) {
+          return JSON.stringify({
+            status: 'partial', error: 'Could not read page HTML — image generated but not inserted',
+            image_url: imageUrl, hint: 'Use edit_page_content with the image_url above to place it on the page.',
+            _source: 'error',
+          });
+        }
+
+        const altText = input.alt_text || input.prompt.slice(0, 80).trim();
+        const selector = (input.image_selector || 'hero').toLowerCase();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(currentHTML, 'text/html');
+
+        let targetImg = null;
+        let targetPicture = null;
+        if (selector === 'hero' || selector === 'first') {
+          targetPicture = doc.querySelector('picture');
+          targetImg = targetPicture ? targetPicture.querySelector('img') : doc.querySelector('img');
+        } else {
+          const imgs = Array.from(doc.querySelectorAll('img'));
+          targetImg = imgs.find(img =>
+            img.alt?.toLowerCase().includes(selector) ||
+            img.closest('[class]')?.className?.toLowerCase().includes(selector)
+          ) || imgs[0];
+          targetPicture = targetImg?.closest('picture') || null;
+        }
+
+        if (targetImg) {
+          targetImg.src = imageUrl;
+          targetImg.alt = altText;
+          if (targetPicture) targetPicture.querySelectorAll('source').forEach(s => s.remove());
+        } else {
+          const main = doc.querySelector('main') || doc.body;
+          const newImg = doc.createElement('img');
+          newImg.src = imageUrl; newImg.alt = altText;
+          main.insertBefore(newImg, main.firstChild);
+        }
+
+        await da.updatePage(htmlPath, doc.body.innerHTML);
+        let previewStatus = 'skipped';
+        try {
+          const previewResp = await da.previewPage(pagePath);
+          previewStatus = previewResp.ok ? 'success' : `pending (${previewResp.status})`;
+        } catch (previewErr) { previewStatus = `pending: ${previewErr.message}`; }
+
+        return JSON.stringify({
+          status: 'success', page_path: pagePath, image_url: imageUrl, alt_text: altText,
+          model_used: 'amazon.titan-image-generator-v2:0', provider: 'Amazon Titan',
+          preview_url: previewUrl, preview_status: previewStatus,
+          source: 'Amazon Titan (Bedrock) + DA Admin API',
+          message: `Amazon Titan image generated and inserted into ${pagePath}. Preview refreshing at ${previewUrl}`,
+          _action: 'refresh_preview', _preview_path: pagePath,
+        }, null, 2);
+      } catch (err) {
+        return mcpError('generate_amazon_image', err);
       }
     }
 
@@ -5442,7 +5554,8 @@ fetch('/scripts/amazon-context.txt').then((r) => r.text()).then((t) => { AMAZON_
 const AEM_SYSTEM_PROMPT = `You are **Amazon Experience Manager Compass** — an expert AI agent embedded in Amazon's AEM content operations interface. You understand Amazon's ecosystem, AWS services, and internal vocabulary.
 
 ## CRITICAL BEHAVIOR RULES (highest priority)
-1. **USE CONVERSATION HISTORY**: When the user says "fix those", "the 23 issues", "do it" — look at YOUR prior messages in this conversation. The context is ABOVE. NEVER say "I don't see", "I need more context", or "from a previous session" when the information is in your own earlier response in THIS conversation.
+1. **IMAGE GENERATION — ALWAYS ASK PROVIDER FIRST**: When the user asks to generate an image, ALWAYS ask: "Would you like to use **Adobe Firefly** (creative AI, brand-safe) or **Amazon Titan** (runs entirely on AWS infrastructure)?" before calling any image tool. Call generate_and_insert_image for Firefly, generate_amazon_image for Titan.
+2. **USE CONVERSATION HISTORY**: When the user says "fix those", "the 23 issues", "do it" — look at YOUR prior messages in this conversation. The context is ABOVE. NEVER say "I don't see", "I need more context", or "from a previous session" when the information is in your own earlier response in THIS conversation.
 2. **NO OPTION MENUS**: Never present "Option A / Option B / Option C" or numbered lists of choices. State what you'll do and wait for confirmation.
 3. **NO "WOULD YOU LIKE ME TO"**: Just state the action: "I'll fix X, Y, Z. Confirm?" — then execute after approval.
 4. **FOLLOW-UP = EXECUTE**: When user says "fix them", "do it", "go", "yes" after your analysis — execute immediately using tools. Don't re-analyze or re-ask.
