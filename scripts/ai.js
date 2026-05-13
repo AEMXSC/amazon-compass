@@ -945,6 +945,19 @@ const AEM_TOOLS = [
   },
 
   {
+    name: 'analyze_page_image',
+    description: 'Amazon Rekognition Image Analysis — Uses AWS Rekognition computer vision to analyze an image on a page. Detects objects, scenes, text overlays, and suggests optimized alt text. Use when the user asks to analyze image content, generate alt text, check what is in a hero image, or run image brand/content safety checks.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        page_path: { type: 'string', description: 'DA page path (e.g. "/products/aws-storage"). Hero image will be extracted automatically.' },
+        image_url: { type: 'string', description: 'Direct image URL to analyze (optional — if omitted, extracts first image from the page).' },
+      },
+      required: ['page_path'],
+    },
+  },
+
+  {
     name: 'web_search',
     description: 'Amazon Kendra Enterprise Search — Real-time web and knowledge base search powered by Amazon Kendra. Use when you need current information: trending topics, competitor analysis, recent news, industry benchmarks, or any query requiring data beyond your training cutoff. Returns a synthesized answer with cited sources. Ideal for: campaign research, trend analysis, competitive landscape, keyword research, and fact-checking live data.',
     input_schema: {
@@ -1802,6 +1815,7 @@ export const TOOL_AGENT_MAP = {
   generate_image: 'Experience Production Agent',
   generate_and_insert_image: 'Experience Production Agent',
   generate_amazon_image: 'Amazon Titan',
+  analyze_page_image: 'Amazon Rekognition',
   web_search: 'Amazon Kendra',
   transform_image: 'Content Optimization Agent',
   create_image_renditions: 'Content Optimization Agent',
@@ -3857,6 +3871,42 @@ export async function executeTool(name, input) {
         return JSON.stringify({ status: 'success', image_url: imageUrl, model: result.model, provider: 'firefly', source: 'Adobe Firefly via Amazon Compass Worker', message: `Image generated. URL: ${imageUrl}` }, null, 2);
       } catch (err) {
         return mcpError('generate_image', err);
+      }
+    }
+
+    case 'analyze_page_image': {
+      try {
+        let imageUrl = input.image_url;
+        if (!imageUrl && input.page_path) {
+          const pagePath = sanitizePath(input.page_path);
+          const htmlPath = (pagePath === '/' ? '/index' : pagePath) + '.html';
+          const html = await da.getPage(htmlPath).catch(() => null);
+          if (html) {
+            const doc = new DOMParser().parseFromString(html, 'text/html');
+            const img = doc.querySelector('picture img, img');
+            imageUrl = img?.src || img?.getAttribute('src');
+          }
+        }
+        if (!imageUrl) return JSON.stringify({ error: 'No image found on page', _source: 'error' });
+
+        const resp = await fetch(`${AMAZON_WORKER_BASE}/rekognition-analyze`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageUrl }),
+        });
+        const result = await resp.json();
+        if (result.error) return JSON.stringify({ error: result.error, _source: 'error' });
+        return JSON.stringify({
+          image_url: imageUrl,
+          labels: result.labels,
+          text_in_image: result.textDetected,
+          suggested_alt_text: result.suggestedAltText,
+          label_count: result.labelCount,
+          provider: 'Amazon Rekognition',
+          _source: 'rekognition',
+        });
+      } catch (err) {
+        return mcpError('analyze_page_image', err);
       }
     }
 

@@ -175,6 +175,9 @@ async function route(request, env) {
   if (url.pathname === '/titan-image' && request.method === 'POST') {
     return handleTitanImage(request, env);
   }
+  if (url.pathname === '/rekognition-analyze' && request.method === 'POST') {
+    return handleRekognitionAnalyze(request, env);
+  }
   if (url.pathname === '/kendra-search' && request.method === 'POST') {
     return handleKendraSearch(request, env);
   }
@@ -2074,11 +2077,13 @@ async function handleMcpOAuthToken(request) {
 
 /* ─── AWS SigV4 signing helper (pure Web Crypto, no npm deps) ─── */
 
-async function sigV4Headers(method, urlStr, body, service, region, accessKeyId, secretAccessKey) {
+// opts: { contentType?: string, extraHeaders?: Record<string,string> }
+async function sigV4Headers(method, urlStr, body, service, region, accessKeyId, secretAccessKey, opts = {}) {
   const url = new URL(urlStr);
   const now = new Date();
   const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '').slice(0, 15) + 'Z';
   const dateStamp = amzDate.slice(0, 8);
+  const contentType = opts.contentType || 'application/json';
 
   const enc = new TextEncoder();
   const hash = async (data) => {
@@ -2090,10 +2095,16 @@ async function sigV4Headers(method, urlStr, body, service, region, accessKeyId, 
     return new Uint8Array(await crypto.subtle.sign('HMAC', k, enc.encode(data)));
   };
 
+  // Build sorted header map — extra headers (e.g. x-amz-target) are included in signing
+  const headerMap = { 'content-type': contentType, 'host': url.host, 'x-amz-date': amzDate };
+  if (opts.extraHeaders) {
+    for (const [k, v] of Object.entries(opts.extraHeaders)) headerMap[k.toLowerCase()] = v;
+  }
+  const sortedKeys = Object.keys(headerMap).sort();
+  const canonicalHeaders = sortedKeys.map((k) => `${k}:${headerMap[k]}`).join('\n') + '\n';
+  const signedHeaders = sortedKeys.join(';');
+
   const payloadHash = await hash(body);
-  const canonicalHeaders = `content-type:application/json\nhost:${url.host}\nx-amz-date:${amzDate}\n`;
-  const signedHeaders = 'content-type;host;x-amz-date';
-  // AWS SigV4: encode each path segment individually so : → %3A, but / separators are kept
   const canonicalUri = url.pathname.split('/').map((s) => encodeURIComponent(s)).join('/');
   const canonicalRequest = [method, canonicalUri, url.search.slice(1), canonicalHeaders, signedHeaders, payloadHash].join('\n');
   const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
@@ -2107,9 +2118,10 @@ async function sigV4Headers(method, urlStr, body, service, region, accessKeyId, 
   const signature = Array.from(sigBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
 
   return {
-    'Content-Type': 'application/json',
+    'Content-Type': contentType,
     'x-amz-date': amzDate,
     'Authorization': `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    ...(opts.extraHeaders || {}),
   };
 }
 
@@ -2311,6 +2323,72 @@ async function handleTitanImage(request, env) {
     model: 'amazon.titan-image-generator-v2:0',
     provider: 'titan',
   }), { headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) } });
+}
+
+/* ─── POST /rekognition-analyze — Detect labels + text in an image via Amazon Rekognition ─── */
+
+async function handleRekognitionAnalyze(request, env) {
+  const origin = request.headers.get('Origin') || '';
+  const region = env.AWS_REGION || 'us-east-1';
+
+  let imageUrl;
+  try { ({ imageUrl } = await request.json()); } catch {
+    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+      status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+  if (!imageUrl) return new Response(JSON.stringify({ error: 'Missing imageUrl' }), {
+    status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+  });
+
+  // Fetch the image and convert to base64 for Rekognition Image.Bytes
+  const imgResp = await fetch(imageUrl);
+  if (!imgResp.ok) return new Response(JSON.stringify({ error: `Could not fetch image: ${imgResp.status}` }), {
+    status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+  });
+  const imgBytes = new Uint8Array(await imgResp.arrayBuffer());
+  let binary = '';
+  for (let i = 0; i < imgBytes.length; i++) binary += String.fromCharCode(imgBytes[i]);
+  const base64Image = btoa(binary);
+
+  const rekUrl = `https://rekognition.${region}.amazonaws.com/`;
+  const rekOpts = { contentType: 'application/x-amz-json-1.1' };
+
+  // DetectLabels
+  const labelsBody = JSON.stringify({ Image: { Bytes: base64Image }, MaxLabels: 20, MinConfidence: 70 });
+  const labelsHeaders = await sigV4Headers('POST', rekUrl, labelsBody, 'rekognition', region,
+    env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY,
+    { ...rekOpts, extraHeaders: { 'X-Amz-Target': 'RekognitionService.DetectLabels' } });
+  const labelsResp = await fetch(rekUrl, { method: 'POST', headers: labelsHeaders, body: labelsBody });
+  if (!labelsResp.ok) {
+    const errText = await labelsResp.text();
+    return new Response(JSON.stringify({ error: `Rekognition ${labelsResp.status}: ${errText}` }), {
+      status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+  const { Labels = [] } = await labelsResp.json();
+  const labels = Labels.map((l) => ({ name: l.Name, confidence: Math.round(l.Confidence) }));
+
+  // DetectText (best-effort — don't fail whole request if it errors)
+  let textDetected = [];
+  try {
+    const textBody = JSON.stringify({ Image: { Bytes: base64Image } });
+    const textHeaders = await sigV4Headers('POST', rekUrl, textBody, 'rekognition', region,
+      env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY,
+      { ...rekOpts, extraHeaders: { 'X-Amz-Target': 'RekognitionService.DetectText' } });
+    const textResp = await fetch(rekUrl, { method: 'POST', headers: textHeaders, body: textBody });
+    if (textResp.ok) {
+      const { TextDetections = [] } = await textResp.json();
+      textDetected = TextDetections.filter((t) => t.Type === 'LINE' && t.Confidence > 80).map((t) => t.DetectedText);
+    }
+  } catch { /* non-fatal */ }
+
+  // Auto-generate alt text from top labels
+  const suggestedAltText = labels.slice(0, 5).map((l) => l.name).join(', ');
+
+  return new Response(JSON.stringify({ labels, textDetected, suggestedAltText, labelCount: labels.length }), {
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+  });
 }
 
 /* ─── POST /kendra-search — Enterprise search via Amazon Kendra ─── */
