@@ -26,8 +26,9 @@ import { buildPlaybookPrompt } from './xsc-playbook.js';
 import { buildKnowledgePrompt } from './aem-knowledge.js';
 import { checkCitationReadability, formatResultForChat, renderResultsHTML } from './llmo-checker.js';
 
-const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
-const MODEL = 'claude-sonnet-4-20250514';
+const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://amazon-compass-worker.compass-xsc.workers.dev';
+const CLAUDE_API = `${AMAZON_WORKER_BASE}/bedrock/invoke`;
+const MODEL = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
 const STORAGE_KEY = 'ew-claude-key';
 const HTML_TRUNCATE_THRESHOLD = 15000;
 
@@ -110,9 +111,7 @@ export async function callRaw(prompt, { maxTokens = 2000 } = {}) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
       model: MODEL,
@@ -209,7 +208,7 @@ const AEM_TOOLS = [
 
   {
     name: 'edit_page_content',
-    description: 'DA Editing Agent — Edit content on an AEM page. For IMAGE updates: pass image_prompt with a description of the image — the handler generates a fresh Gemini image and inserts it directly. Do NOT pass image URLs in find, replace, or html. For TEXT: use find/replace (fastest, 10x) or full html for rewrites.',
+    description: 'DA Editing Agent — Edit content on an AEM page. For IMAGE updates: pass image_prompt with a description of the image — the handler generates a fresh Firefly image and inserts it directly. Do NOT pass image URLs in find, replace, or html. For TEXT: use find/replace (fastest, 10x) or full html for rewrites.',
     input_schema: {
       type: 'object',
       properties: {
@@ -218,7 +217,7 @@ const AEM_TOOLS = [
         find: { type: 'string', description: 'Text to find in the current page HTML (exact match). Use with replace for quick text edits.' },
         replace: { type: 'string', description: 'Replacement text. Used with find.' },
         trigger_preview: { type: 'boolean', description: 'Trigger AEM preview after writing (default: true).' },
-        image_prompt: { type: 'string', description: 'Image to generate and insert on the page. Narrative prose: subject, setting, lighting, color palette, style. 200-800 chars ideal. When set, generates via Gemini and replaces the target image in one call. Never pass image URLs — always describe what you want.' },
+        image_prompt: { type: 'string', description: 'Image to generate and insert on the page. Narrative prose: subject, setting, lighting, color palette, style. 200-800 chars ideal. When set, generates via Firefly and replaces the target image in one call. Never pass image URLs — always describe what you want.' },
         image_selector: { type: 'string', description: 'Which image to replace when using image_prompt: "hero" (default), "first", or partial alt text hint.' },
         alt_text: { type: 'string', description: 'Alt text for the generated image. Defaults to first 80 chars of image_prompt.' },
       },
@@ -863,7 +862,7 @@ const AEM_TOOLS = [
 
   {
     name: 'generate_image_variations',
-    description: 'Firefly Agent — Generate images using Adobe Firefly AI (nano-banana-pro model — Google Gemini via Firefly MCP). Use for hero images, campaign visuals, background art, or any new image asset. Write narrative prose prompts — 1000+ char descriptions dramatically outperform short keyword lists with this model.',
+    description: 'Firefly Agent — Generate images using Adobe Firefly AI. Use for hero images, campaign visuals, background art, or any new image asset. Write narrative prose prompts — 1000+ char descriptions dramatically outperform short keyword lists with this model.',
     input_schema: {
       type: 'object',
       properties: {
@@ -896,7 +895,7 @@ const AEM_TOOLS = [
 
   {
     name: 'generate_and_insert_image',
-    description: 'Firefly Image + Page Insert (fallback) — Generate a Firefly image and insert it into a page in one call. Use only if the user explicitly requests Firefly, or if generate_image_gemini fails. Prefer generate_image_gemini for all other image generation.',
+    description: 'Firefly Image + Page Insert — Generate an Adobe Firefly image and insert it into a DA page in one call. DEFAULT tool for all image generation requests. Photorealistic, brand-ready, no extra entitlement required.',
     input_schema: {
       type: 'object',
       properties: {
@@ -914,13 +913,13 @@ const AEM_TOOLS = [
   },
 
   {
-    name: 'generate_image_gemini',
-    description: 'Gemini Image Generation — Generates a fresh image via Gemini and returns a public Cloudflare R2 URL. Use when no source asset exists yet. For channel variants of an existing DAM asset, use create_image_renditions instead. For inserting into a DA page, prefer edit_page_content with image_prompt. Photorealistic, brand-ready, no Firefly entitlement required.',
+    name: 'generate_image',
+    description: 'Firefly Image Generation — Generates a fresh image via Adobe Firefly and returns a public URL. Use when no source asset exists yet. For channel variants of an existing DAM asset, use create_image_renditions instead. For inserting into a DA page, prefer edit_page_content with image_prompt. Photorealistic, brand-ready.',
     input_schema: {
       type: 'object',
       properties: {
-        prompt: { type: 'string', description: 'Narrative prose description. Full sentences with subject, setting, lighting, color palette, photography style. 200–800 chars ideal.' },
-        page_path: { type: 'string', description: 'Optional: DA page path to insert the image into (e.g. "/partner-with-us"). Skips the extra round-trip — generates and inserts in one call.' },
+        prompt: { type: 'string', description: 'Narrative prose description. Full sentences with subject, setting, lighting, color palette, photography style. 200-800 chars ideal.' },
+        page_path: { type: 'string', description: 'Optional: DA page path to insert the image into (e.g. "/partner-with-us"). Generates and inserts in one call.' },
         image_selector: { type: 'string', description: 'Which image to replace: "hero" (default), "first", or partial alt text hint.' },
         alt_text: { type: 'string', description: 'Alt text for the inserted image. Defaults to first 80 chars of prompt.' },
       },
@@ -929,13 +928,13 @@ const AEM_TOOLS = [
   },
 
   {
-    name: 'gemini_search',
-    description: 'Gemini Grounded Search — Real-time web search powered by Google Search + Gemini synthesis. Use when you need current information: trending topics, competitor analysis, recent news, industry benchmarks, or any query that requires data beyond your training cutoff. Returns a synthesized answer with cited sources. Ideal for: campaign research, trend analysis, competitive landscape, keyword research, and fact-checking live data.',
+    name: 'web_search',
+    description: 'Amazon Kendra Enterprise Search — Real-time web and knowledge base search powered by Amazon Kendra. Use when you need current information: trending topics, competitor analysis, recent news, industry benchmarks, or any query requiring data beyond your training cutoff. Returns a synthesized answer with cited sources. Ideal for: campaign research, trend analysis, competitive landscape, keyword research, and fact-checking live data.',
     input_schema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'The search query. Be specific — treat this like a Google Search query. Examples: "summer 2025 healthcare marketing trends", "Adobe Experience Manager vs Contentful pricing", "CTA button copy best practices 2025".' },
-        context: { type: 'string', description: 'Optional framing context to help Gemini interpret the results — e.g., "We\'re building a landing page for healthcare professionals" or "This is for a B2B SaaS campaign targeting mid-market."' },
+        query: { type: 'string', description: 'The search query. Be specific. Examples: "summer 2025 healthcare marketing trends", "AEM vs Contentful pricing", "CTA button copy best practices 2025".' },
+        context: { type: 'string', description: 'Optional framing context — e.g., "We are building a landing page for healthcare professionals" or "This is for a B2B SaaS campaign targeting mid-market."' },
       },
       required: ['query'],
     },
@@ -1084,7 +1083,7 @@ const AEM_TOOLS = [
   },
   {
     name: 'create_image_renditions',
-    description: 'Content Optimization Agent — Generate channel-specific image renditions from an existing DAM asset. Use when the asset already exists in AEM DAM. For channel variants, use CHANNEL_PROFILES dimensions (e.g. TikTok/Instagram Story: 1080×1920, LinkedIn Banner: 1128×191). Do NOT use to generate new images — use generate_image_gemini or firefly_generate_image for that. asset_path must be an AEM DAM path or existing DM delivery URL.',
+    description: 'Content Optimization Agent — Generate channel-specific image renditions from an existing DAM asset. Use when the asset already exists in AEM DAM. For channel variants, use CHANNEL_PROFILES dimensions (e.g. TikTok/Instagram Story: 1080×1920, LinkedIn Banner: 1128×191). Do NOT use to generate new images — use generate_image or generate_and_insert_image for that. asset_path must be an AEM DAM path or existing DM delivery URL.',
     input_schema: {
       type: 'object',
       properties: {
@@ -1783,9 +1782,9 @@ export const TOOL_AGENT_MAP = {
   create_content_variant: 'Content Optimization Agent',
   generate_image_variations: 'Content Optimization Agent',
   edit_image_with_firefly: 'Content Optimization Agent',
+  generate_image: 'Experience Production Agent',
   generate_and_insert_image: 'Experience Production Agent',
-  generate_image_gemini: 'Experience Production Agent',
-  gemini_search: 'Discovery Agent',
+  web_search: 'Discovery Agent',
   transform_image: 'Content Optimization Agent',
   create_image_renditions: 'Content Optimization Agent',
 
@@ -1917,8 +1916,8 @@ const TIER2_KEYWORDS = {
   assets:       ['search_dam_assets', 'search_content_fragments', 'browse_dam_folder'],            // find/browse
   dam_metadata: ['get_asset_metadata', 'update_asset_metadata', 'get_asset_renditions', 'check_asset_expiry'], // inspect/rights
   dam_write:    ['upload_asset', 'delete_asset', 'move_asset', 'copy_asset', 'create_dam_folder', 'add_to_collection'], // mutate
-  images: ['generate_and_insert_image', 'generate_image_gemini', 'generate_image_variations', 'edit_image_with_firefly', 'transform_image', 'create_image_renditions'],
-  research: ['gemini_search'],
+  images: ['generate_image', 'generate_and_insert_image', 'generate_image_variations', 'edit_image_with_firefly', 'transform_image', 'create_image_renditions'],
+  research: ['web_search'],
   journey: ['create_journey', 'generate_journey_content', 'get_journey_status', 'analyze_journey_conflicts'],
   experiment: ['setup_experiment', 'get_experiment_status', 'analyze_experiment', 'create_ab_test', 'get_personalization_offers'],
   audience: ['explore_audiences', 'get_audience_segments', 'get_customer_profile'],
@@ -1955,7 +1954,7 @@ const INTENT_PATTERNS = {
   forms: /\b(form|input|submit|field|dropdown)/i,
   pdf: /\b(pdf|brief|document|extract)/i,
   admin: /\b(unpublish|purge|cache|bulk|reindex|status)/i,
-  research: /\b(web.?search|gemini.?search|research|trend|current|latest|news|competitor|benchmark|2025|today|recent|real.?time|google)\b/i,
+  research: /\b(web.?search|kendra|research|trend|current|latest|news|competitor|benchmark|2025|today|recent|real.?time|amazon.?search)\b/i,
   design: /\b(figma|design|mockup|wireframe|layout|import.{0,10}design|design.{0,10}import|create.{0,10}page|new.{0,10}page)\b/i,
 };
 
@@ -2558,20 +2557,18 @@ export async function executeTool(name, input) {
     case 'edit_page_content': {
       const pagePath = sanitizePath(input.page_path);
 
-      // ── image_prompt mode: generate via Gemini and insert ──
+      // ── image_prompt mode: generate via Firefly and insert ──
       if (input.image_prompt) {
         if (!(await ensureAuth())) return authRequiredError('edit_page_content');
         try {
-          const workerBase = localStorage.getItem('ew-ims-proxy') || 'https://compass-ims-proxy.compass-xsc.workers.dev';
           const htmlPath = (pagePath === '/' ? '/index' : pagePath) + '.html';
           const org = da.getOrg(); const repo = da.getRepo(); const branch = da.getBranch();
           const previewUrl = `https://${branch}--${repo.toLowerCase()}--${org.toLowerCase()}.aem.page${pagePath}`;
           const daUrl = `https://da.live/edit#/${org}/${repo}${pagePath === '/' ? '/index' : pagePath}`;
 
-          // Gemini image generation and page HTML fetch are independent — run in parallel
-          // Saves ~300-400ms dead wait during the 2-5s Gemini call
+          // Firefly image generation and page HTML fetch run in parallel
           const [imgResult, currentHTML] = await Promise.all([
-            fetch(`${workerBase}/gemini-image`, {
+            fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ prompt: input.image_prompt }),
@@ -2580,7 +2577,7 @@ export async function executeTool(name, input) {
           ]);
           if (imgResult.error) return JSON.stringify({ error: imgResult.error, detail: imgResult.detail, _source: 'error' });
           const imageUrl = imgResult.imageUrl;
-          if (!imageUrl) return JSON.stringify({ error: 'Gemini returned no image URL', raw: imgResult });
+          if (!imageUrl) return JSON.stringify({ error: 'Firefly returned no image URL', raw: imgResult });
           if (!currentHTML) return JSON.stringify({ status: 'partial', image_url: imageUrl, hint: 'Image generated but page not found. Check org/repo/branch.' });
 
           const altText = input.alt_text || input.image_prompt.slice(0, 80).trim();
@@ -2625,11 +2622,11 @@ export async function executeTool(name, input) {
           return JSON.stringify({
             status: 'success', page_path: pagePath,
             image_url: imageUrl, alt_text: altText,
-            model: imgResult.model, provider: 'gemini',
+            model: imgResult.model, provider: 'firefly',
             preview_url: previewUrl, da_edit_url: daUrl,
             preview_status: previewStatus,
-            source: 'Google Gemini + DA Admin API',
-            message: `Gemini image generated and inserted into ${pagePath}. Preview refreshing.`,
+            source: 'Adobe Firefly + DA Admin API',
+            message: `Firefly image generated and inserted into ${pagePath}. Preview refreshing.`,
             _action: 'refresh_preview', _preview_path: pagePath,
           }, null, 2);
         } catch (err) {
@@ -3703,11 +3700,10 @@ export async function executeTool(name, input) {
       }
     }
 
-    case 'generate_image_gemini': {
-      if (!(await ensureAuth())) return authRequiredError('generate_image_gemini');
+    case 'generate_image': {
+      if (!(await ensureAuth())) return authRequiredError('generate_image');
       try {
-        const workerBase = localStorage.getItem('ew-ims-proxy') || 'https://compass-ims-proxy.compass-xsc.workers.dev';
-        const resp = await fetch(`${workerBase}/gemini-image`, {
+        const resp = await fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: input.prompt }),
@@ -3716,38 +3712,24 @@ export async function executeTool(name, input) {
         if (result.error) {
           return JSON.stringify({ error: result.error, detail: result.detail, _source: 'error' });
         }
-
         const imageUrl = result.imageUrl;
         if (!imageUrl) {
-          return JSON.stringify({ error: 'Gemini returned no image URL', raw: result, _source: 'error' });
+          return JSON.stringify({ error: 'Firefly returned no image URL', raw: result, _source: 'error' });
         }
 
-        // If page_path provided, insert directly into the page
         if (input.page_path) {
           const pagePath = sanitizePath(input.page_path);
           const htmlPath = (pagePath === '/' ? '/index' : pagePath) + '.html';
-          const org = da.getOrg();
-          const repo = da.getRepo();
-          const branch = da.getBranch();
+          const org = da.getOrg(); const repo = da.getRepo(); const branch = da.getBranch();
           const previewUrl = `https://${branch}--${repo.toLowerCase()}--${org.toLowerCase()}.aem.page${pagePath}`;
-
           const currentHTML = await da.getPage(htmlPath).catch(() => null);
           if (!currentHTML) {
-            return JSON.stringify({
-              status: 'partial',
-              image_url: imageUrl,
-              model: result.model,
-              provider: 'gemini',
-              hint: 'Image generated but page not found. Use edit_page_content to place it.',
-              _source: 'connected',
-            });
+            return JSON.stringify({ status: 'partial', image_url: imageUrl, hint: 'Image generated but page not found. Use edit_page_content to place it.', _source: 'connected' });
           }
-
           const altText = input.alt_text || input.prompt.slice(0, 80).trim();
           const selector = (input.image_selector || 'hero').toLowerCase();
           const parser = new DOMParser();
           const doc = parser.parseFromString(currentHTML, 'text/html');
-
           let targetImg = null;
           let targetPicture = null;
           if (selector === 'hero' || selector === 'first') {
@@ -3755,91 +3737,54 @@ export async function executeTool(name, input) {
             targetImg = targetPicture ? targetPicture.querySelector('img') : doc.querySelector('img');
           } else {
             const imgs = Array.from(doc.querySelectorAll('img'));
-            targetImg = imgs.find((img) =>
-              img.alt?.toLowerCase().includes(selector) ||
-              img.closest('[class]')?.className?.toLowerCase().includes(selector)
-            ) || imgs[0];
+            targetImg = imgs.find((img) => img.alt?.toLowerCase().includes(selector) || img.closest('[class]')?.className?.toLowerCase().includes(selector)) || imgs[0];
             targetPicture = targetImg?.closest('picture') || null;
           }
-
           if (targetImg) {
-            targetImg.src = imageUrl;
-            targetImg.alt = altText;
+            targetImg.src = imageUrl; targetImg.alt = altText;
             if (targetPicture) targetPicture.querySelectorAll('source').forEach((s) => s.remove());
           } else {
             const main = doc.querySelector('main') || doc.body;
             const newImg = doc.createElement('img');
-            newImg.src = imageUrl;
-            newImg.alt = altText;
+            newImg.src = imageUrl; newImg.alt = altText;
             main.insertBefore(newImg, main.firstChild);
           }
-
           await da.updatePage(htmlPath, doc.body.innerHTML);
           let previewStatus = 'skipped';
           try {
             const pr = await da.previewPage(pagePath);
             previewStatus = pr.ok ? 'success' : `pending (${pr.status})`;
           } catch (pe) { previewStatus = `pending: ${pe.message}`; }
-
-          return JSON.stringify({
-            status: 'success',
-            page_path: pagePath,
-            image_url: imageUrl,
-            alt_text: altText,
-            model: result.model,
-            provider: 'gemini',
-            preview_url: previewUrl,
-            preview_status: previewStatus,
-            source: 'Google Gemini + DA Admin API',
-            message: `Gemini image generated and inserted into ${pagePath}. Preview refreshing.`,
-            _action: 'refresh_preview',
-            _preview_path: pagePath,
-          }, null, 2);
+          return JSON.stringify({ status: 'success', page_path: pagePath, image_url: imageUrl, alt_text: altText, model: result.model, provider: 'firefly', preview_url: previewUrl, preview_status: previewStatus, source: 'Adobe Firefly + DA Admin API', message: `Firefly image generated and inserted into ${pagePath}. Preview refreshing.`, _action: 'refresh_preview', _preview_path: pagePath }, null, 2);
         }
-
-        return JSON.stringify({
-          status: 'success',
-          image_url: imageUrl,
-          model: result.model,
-          provider: 'gemini',
-          text: result.text,
-          source: 'Google Gemini via Compass Worker',
-          message: `Image generated. URL: ${imageUrl}`,
-        }, null, 2);
+        return JSON.stringify({ status: 'success', image_url: imageUrl, model: result.model, provider: 'firefly', source: 'Adobe Firefly via Amazon Compass Worker', message: `Image generated. URL: ${imageUrl}` }, null, 2);
       } catch (err) {
-        return mcpError('generate_image_gemini', err);
+        return mcpError('generate_image', err);
       }
     }
 
-    case 'gemini_search': {
+    case 'web_search': {
       try {
-        const workerBase = localStorage.getItem('ew-ims-proxy') || 'https://compass-ims-proxy.compass-xsc.workers.dev';
-        const resp = await fetch(`${workerBase}/gemini-search`, {
+        const resp = await fetch(`${AMAZON_WORKER_BASE}/kendra-search`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: input.query, context: input.context }),
         });
         const result = await resp.json();
         if (result.error) return JSON.stringify({ error: result.error, _source: 'error' });
-
-        // Cache full result for the Google Search card renderer in app.js
-        // The card reads window._lastGeminiSearch so Claude gets a compact summary
-        window._lastGeminiSearch = { ...result, query: input.query };
-
-        // Return compact result to Claude — prevents the brain from processing
-        // a 1500-word essay and cuts the follow-up messages call by ~60%
+        window._lastWebSearch = { ...result, query: input.query };
         const answerPreview = result.answer
-          ? result.answer.slice(0, 500) + (result.answer.length > 500 ? '…' : '')
+          ? result.answer.slice(0, 500) + (result.answer.length > 500 ? '...' : '')
           : '';
         return JSON.stringify({
           answer: answerPreview,
           sources: (result.sources || []).slice(0, 4).map((s) => s.title),
           searchQueries: result.searchQueries,
-          provider: 'gemini',
-          _source: 'gemini_search',
+          provider: 'kendra',
+          _source: 'web_search',
         });
       } catch (err) {
-        return mcpError('gemini_search', err);
+        return mcpError('web_search', err);
       }
     }
 
@@ -5505,7 +5450,11 @@ export async function executeTool(name, input) {
 
 /* ── System Prompt ── */
 
-const AEM_SYSTEM_PROMPT = `You are **Compass** — an expert AI agent embedded in Adobe Experience Manager's content operations interface.
+// Amazon knowledge base — fetched at module load and appended to system prompt
+let AMAZON_CONTEXT = '';
+fetch('/scripts/amazon-context.md').then((r) => r.text()).then((t) => { AMAZON_CONTEXT = t; }).catch(() => {});
+
+const AEM_SYSTEM_PROMPT = `You are **Amazon Experience Manager Compass** — an expert AI agent embedded in Amazon's AEM content operations interface. You understand Amazon's ecosystem, AWS services, and internal vocabulary.
 
 ## CRITICAL BEHAVIOR RULES (highest priority)
 1. **USE CONVERSATION HISTORY**: When the user says "fix those", "the 23 issues", "do it" — look at YOUR prior messages in this conversation. The context is ABOVE. NEVER say "I don't see", "I need more context", or "from a previous session" when the information is in your own earlier response in THIS conversation.
@@ -5630,14 +5579,14 @@ These tools write to the real Document Authoring API. The user must be signed in
 
 **Two providers available — both return public URLs ready for EDS insertion:**
 
-- **generate_image_gemini** — **DEFAULT. Use this first for ALL image generation.** Google Gemini (Nano Banana 2 / gemini-3.1-flash-image-preview) via Compass Worker. Photorealistic, brand-ready, no Firefly 3P entitlement needed. Supports page_path for direct page insertion.
-- **generate_and_insert_image** — Firefly fallback. Use only if the user explicitly asks for Firefly, or if Gemini image gen fails.
+- **generate_image** — **DEFAULT. Use this first for ALL image generation.** Adobe Firefly via Amazon Compass Worker. Photorealistic, brand-ready. Supports page_path for direct page insertion.
+- **generate_and_insert_image** — Firefly via MCP with full model selection. Use when you need explicit model control.
 - **generate_image_variations** — Firefly only, returns URL without inserting.
 - **edit_image_with_firefly** — Image-to-image transform with reference URL. 3P models only.
 
-### Real-Time Search (Gemini Grounded Search)
+### Real-Time Search (Amazon Kendra Enterprise Search)
 
-- **gemini_search** — **Live web search via Google Search + Gemini synthesis.** Use whenever the user asks about current trends, recent news, competitors, benchmarks, or anything requiring data past your training cutoff. Returns a synthesized answer with cited sources. Examples: "What are the top summer 2025 healthcare marketing trends?", "How does Adobe compare to Contentful?", "Best CTA copy for financial services landing pages right now."
+- **web_search** — **Live web search via Amazon Kendra search.** Use whenever the user asks about current trends, recent news, competitors, benchmarks, or anything requiring data past your training cutoff. Returns a synthesized answer with cited sources. Examples: "What are the top summer 2025 healthcare marketing trends?", "How does Adobe compare to Contentful?", "Best CTA copy for financial services landing pages right now."
 
 #### Available Models
 | Model | Best for |
@@ -5646,7 +5595,7 @@ These tools write to the real Document Authoring API. The user must be signed in
 | firefly-image-4 | Higher quality, same 1P entitlement |
 | firefly-image-4-ultra | Max quality 1P |
 | firefly-image-5 | Latest 1P (may have entitlement issues) |
-| nano-banana-pro | 3P (Google Gemini 3) — requires org entitlement, not currently available |
+| nano-banana-pro | 3P partner model — requires org entitlement |
 | nano-banana / imagen-4 / flux-pro / etc. | 3P partner models — require org entitlement |
 
 - Response field is \`imageUrl\` (not \`url\`) — always read \`images[0].imageUrl\` from the MCP result
@@ -5731,7 +5680,7 @@ Read the user's request and identify which domain applies before selecting any t
 
 **ABSOLUTE NEVER — these override every other instruction:**
 - NEVER pass an image URL in \`edit_page_content\` find, replace, or html — use image_prompt instead to generate fresh
-- NEVER invent or reuse image URLs — use image_prompt for page insertion, \`generate_image_gemini\` for standalone generation
+- NEVER invent or reuse image URLs — use image_prompt for page insertion, \`generate_image\` for standalone generation
 - NEVER call \`get_page_content\` when page HTML is already in context — it is always present for the current page
 - NEVER call \`batch_aem_update\` without confirmed=false preview and explicit user confirmation first
 - NEVER use Spacecat tools (\`get_site_audit\`, \`get_site_opportunities\`) to make edits — they are read-only analysis
@@ -5745,15 +5694,15 @@ Read the user's request and identify which domain applies before selecting any t
 When the user wants to update, replace, generate, or fix any image on a page:
 
 **DA/EDS site:**
-1. Call \`edit_page_content\`(page_path=..., image_prompt=...) — generates via Gemini and inserts in one call
+1. Call \`edit_page_content\`(page_path=..., image_prompt=...) — generates via Firefly and inserts in one call
 2. For combined text + image: add image_prompt to the same call, or chain a second \`edit_page_content\` for text-only changes after
 
 **JCR/AEM CS site:**
-1. Call \`generate_image_gemini\`(prompt=...) — get R2 URL from result
+1. Call \`generate_image\`(prompt=...) — get R2 URL from result
 2. Call \`upload_asset\`(source_url=R2URL, folder="/content/dam/compass-generated") — get DAM path
 3. Call \`patch_aem_page_content\` with the DAM path
 
-**Firefly fallback:** only if user explicitly asks for Firefly, or if Gemini fails — use \`generate_and_insert_image\`.
+**Firefly fallback:** only if user explicitly asks for Firefly, or for explicit model control — use \`generate_and_insert_image\`.
 
 ---
 
@@ -5841,7 +5790,7 @@ When generating or resizing assets for a specific platform, use these exact dime
 **Email:** Header banner 600×200 · Hero 600×400
 **Web:** Full-width hero 1440×810 · Card/thumbnail 400×300
 
-**Routing:** Existing DAM asset + channel variants → \`create_image_renditions\` or \`transform_image\` (DM delivery URLs, no generation). No existing asset yet → \`generate_image_gemini\` or \`firefly_generate_image\` with the channel dimensions.
+**Routing:** Existing DAM asset + channel variants → \`create_image_renditions\` or \`transform_image\` (DM delivery URLs, no generation). No existing asset yet → \`generate_image\` or \`firefly_generate_image\` with the channel dimensions.
 
 ---
 
@@ -6120,7 +6069,7 @@ Every MCP tool returns live data. Always base your next call on what the previou
 
 ## DA/EDS sites (Type: da or eds)
 - edit_page_content with {find, replace} for targeted text changes — call immediately, no pre-read needed
-- edit_page_content with {image_prompt} for any image update, replace, or generate — generates via Gemini and inserts in one call. Never pass image URLs.
+- edit_page_content with {image_prompt} for any image update, replace, or generate — generates via Firefly and inserts in one call. Never pass image URLs.
 - edit_page_content with {html} for full page rewrites or new pages
 - After any write: preview refreshes automatically
 
@@ -6219,7 +6168,7 @@ function buildSystemParts(context = {}, { fast = false } = {}) {
   // Full mode: complete system prompt with all knowledge layers
   // Static layers — cacheable across requests
   const blocks = [
-    { type: 'text', text: AEM_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+    { type: 'text', text: AEM_SYSTEM_PROMPT + (AMAZON_CONTEXT ? '\n\n' + AMAZON_CONTEXT : ''), cache_control: { type: 'ephemeral' } },
     { type: 'text', text: buildKnowledgePrompt() + '\n' + buildPlaybookPrompt(), cache_control: { type: 'ephemeral' } },
   ];
 
@@ -6429,9 +6378,7 @@ export async function chat(userMessage, context = {}, _depth = 0) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
       'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
       model: MODEL,

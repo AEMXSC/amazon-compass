@@ -1,5 +1,5 @@
 /* Compass — AEMCoder-inspired Theme */
-/* Adobe Clean font loaded via <link rel="preload"> in index.html (non-blocking) */
+/* Amazon Ember font — falls back to system sans if not loaded */
 
 /* ─── EDS Overrides ─── */
 body.appear {
@@ -55,17 +55,17 @@ body > main > .section > div {
 }
 
 :root {
-  /* AEMCoder Deep Indigo Palette */
-  --bg-primary: #0f1117;
-  --bg-secondary: #161822;
-  --bg-card: #1c1f2e;
-  --bg-card-hover: #242838;
-  --bg-input: #1a1d2b;
-  --bg-sidebar: #0b0d14;
-  --bg-header: #0e1019;
-  --border: #2a2d3d;
-  --border-light: #333750;
-  --border-focus: #4a5cdb;
+  /* Amazon CloudScape Dark Palette — cloudscape.design */
+  --bg-primary: #0f1b2d;
+  --bg-secondary: #192534;
+  --bg-card: #1c2b3a;
+  --bg-card-hover: #203040;
+  --bg-input: #192534;
+  --bg-sidebar: #161d2e;
+  --bg-header: #232f3e;
+  --border: #2d3748;
+  --border-light: #374151;
+  --border-focus: #EC7211;
 
   /* Text */
   --text-primary: #e8eaed;
@@ -73,12 +73,12 @@ body > main > .section > div {
   --text-muted: #8a8fa6;
   --text-disabled: #6b7084;
 
-  /* Accent */
-  --accent: #4a5cdb;
-  --accent-rgb: 74, 92, 219;
-  --accent-hover: #5a6be8;
-  --accent-light: #7b8cf0;
-  --accent-dim: rgba(74, 92, 219, 0.15);
+  /* Accent — CloudScape action orange */
+  --accent: #EC7211;
+  --accent-rgb: 236, 114, 17;
+  --accent-hover: #d96b0e;
+  --accent-light: #f89f68;
+  --accent-dim: rgba(236, 114, 17, 0.15);
 
   /* Semantic */
   --green: #34d399;
@@ -88,7 +88,7 @@ body > main > .section > div {
   --yellow: #fbbf24;
   --yellow-dim: rgba(251, 191, 36, 0.15);
   --orange: #f59e0b;
-  --adobe-red: #e1251b;
+  --danger-red: #e1251b;
 
   /* Sizes */
   --sidebar-width: 52px;
@@ -99,7 +99,7 @@ body > main > .section > div {
   --radius-xl: 16px;
 
   /* Fonts */
-  --font-sans: 'Adobe Clean', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Amazon Ember', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'Source Code Pro', 'SF Mono', 'Fira Code', monospace;
 }
 
@@ -248,7 +248,7 @@ textarea:focus-visible,
   height: 18px;
 }
 
-.adobe-logo {
+.amazon-logo {
   width: 28px;
   height: 24px;
   display: flex;
@@ -256,7 +256,7 @@ textarea:focus-visible,
   justify-content: center;
 }
 
-.adobe-logo svg {
+.amazon-logo svg {
   width: 24px;
   height: 20px;
 }
@@ -4991,7 +4991,7 @@ textarea:focus-visible,
   cursor: not-allowed !important;
 }
 .preview-action-export.active {
-  color: var(--adobe-red, #e1251b) !important;
+  color: var(--danger-red, #e1251b) !important;
   opacity: 1;
   cursor: pointer !important;
 }
@@ -5004,8 +5004,8 @@ textarea:focus-visible,
 }
 .export-inline-btn {
   background: var(--bg-card);
-  border: 1px solid var(--adobe-red, #e1251b);
-  color: var(--adobe-red, #e1251b);
+  border: 1px solid var(--danger-red, #e1251b);
+  color: var(--danger-red, #e1251b);
   padding: 6px 14px;
   border-radius: var(--radius-sm);
   font-size: 12px;

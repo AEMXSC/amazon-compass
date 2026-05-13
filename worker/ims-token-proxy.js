@@ -153,14 +153,14 @@ async function route(request, env) {
   if (url.pathname === '/mcp-oauth/register' && request.method === 'POST') {
     return handleMcpOAuthRegister(request);
   }
-  if (url.pathname === '/gemini-image' && request.method === 'POST') {
-    return handleGeminiImage(request, env);
+  if (url.pathname === '/firefly-image' && request.method === 'POST') {
+    return handleFireflyImage(request, env);
   }
-  if (url.pathname === '/gemini-search' && request.method === 'POST') {
-    return handleGeminiSearch(request, env);
+  if (url.pathname === '/kendra-search' && request.method === 'POST') {
+    return handleKendraSearch(request, env);
   }
-  if (url.pathname === '/gemini-models' && request.method === 'GET') {
-    return handleGeminiModels(request, env);
+  if (url.pathname === '/bedrock/invoke' && request.method === 'POST') {
+    return handleBedrockInvoke(request, env);
   }
   if (url.pathname === '/figma-file' && request.method === 'GET') {
     return handleFigmaFile(request, env);
@@ -1281,15 +1281,136 @@ async function handleAuthorProxy(request) {
   }
 }
 
-/* ─── POST /gemini-image — Generate image via Gemini, store in R2, return public URL ─── */
+/* ─── AWS SigV4 signing helper (pure Web Crypto, no deps) ─── */
 
-async function handleGeminiImage(request, env) {
+async function sha256Hex(message) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(message));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function hmacSha256Bytes(key, message) {
+  const k = key instanceof Uint8Array ? key : new TextEncoder().encode(key);
+  const cryptoKey = await crypto.subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(message)));
+}
+
+function toHex(bytes) {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function sigV4Headers(method, urlStr, body, service, region, accessKeyId, secretAccessKey) {
+  const now = new Date();
+  const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const timeStamp = now.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '') + '';
+  const amzDate = timeStamp.slice(0, 15) + 'Z';
+  const urlObj = new URL(urlStr);
+  const payloadHash = await sha256Hex(body);
+  const canonicalHeaders = `content-type:application/json\nhost:${urlObj.host}\nx-amz-date:${amzDate}\n`;
+  const signedHeaders = 'content-type;host;x-amz-date';
+  const canonicalRequest = [method, urlObj.pathname, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
+  const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
+  const stringToSign = `AWS4-HMAC-SHA256\n${amzDate}\n${credentialScope}\n${await sha256Hex(canonicalRequest)}`;
+  let sigKey = await hmacSha256Bytes(`AWS4${secretAccessKey}`, dateStamp);
+  sigKey = await hmacSha256Bytes(sigKey, region);
+  sigKey = await hmacSha256Bytes(sigKey, service);
+  sigKey = await hmacSha256Bytes(sigKey, 'aws4_request');
+  const signature = toHex(await hmacSha256Bytes(sigKey, stringToSign));
+  return {
+    'Authorization': `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`,
+    'Content-Type': 'application/json',
+    'x-amz-date': amzDate,
+  };
+}
+
+/* ─── POST /bedrock/invoke — Proxy to AWS Bedrock, convert EventStream → Anthropic SSE ─── */
+
+async function handleBedrockInvoke(request, env) {
   const origin = request.headers.get('Origin') || '';
-  if (!ALLOWED_ORIGINS.includes(origin)) {
-    return new Response('Forbidden', { status: 403 });
+  if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+    return new Response(JSON.stringify({ error: 'AWS credentials not configured. Run: npx wrangler secret put AWS_ACCESS_KEY_ID' }), {
+      status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
   }
-  if (!env.GEMINI_API_KEY) {
-    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured — run: npx wrangler secret put GEMINI_API_KEY' }), {
+
+  const body = await request.text();
+  const bodyObj = JSON.parse(body);
+  const modelId = bodyObj.model || 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+  const region = env.AWS_REGION || 'us-east-1';
+  const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${encodeURIComponent(modelId)}/invoke-with-response-stream`;
+
+  // Bedrock requires anthropic_version in body, not as a header
+  if (!bodyObj.anthropic_version) bodyObj.anthropic_version = '2023-06-01';
+  const bedrockBody = JSON.stringify(bodyObj);
+
+  const headers = await sigV4Headers('POST', bedrockUrl, bedrockBody, 'bedrock', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
+
+  const bedrockResp = await fetch(bedrockUrl, { method: 'POST', headers, body: bedrockBody });
+
+  if (!bedrockResp.ok) {
+    const errText = await bedrockResp.text();
+    return new Response(JSON.stringify({ error: { message: `Bedrock ${bedrockResp.status}: ${errText}` } }), {
+      status: bedrockResp.status, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  // Convert Bedrock binary EventStream → Anthropic SSE
+  const { readable, writable } = new TransformStream();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
+
+  (async () => {
+    const reader = bedrockResp.body.getReader();
+    let buffer = new Uint8Array(0);
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        // Append to buffer
+        const tmp = new Uint8Array(buffer.length + value.length);
+        tmp.set(buffer); tmp.set(value, buffer.length);
+        buffer = tmp;
+        // Parse complete EventStream frames from buffer
+        while (buffer.length >= 16) {
+          const view = new DataView(buffer.buffer, buffer.byteOffset);
+          const totalLen = view.getUint32(0);
+          if (buffer.length < totalLen) break;
+          const headerLen = view.getUint32(4);
+          const bodyStart = 12 + headerLen;
+          const bodyEnd = totalLen - 4;
+          if (bodyEnd > bodyStart) {
+            const bodyBytes = buffer.slice(bodyStart, bodyEnd);
+            try {
+              const frame = JSON.parse(new TextDecoder().decode(bodyBytes));
+              const chunkBytes = frame.bytes;
+              if (chunkBytes) {
+                const chunk = JSON.parse(atob(chunkBytes));
+                await writer.write(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+              }
+            } catch { /* skip malformed frames */ }
+          }
+          buffer = buffer.slice(totalLen);
+        }
+      }
+    } catch (e) { console.error('[Bedrock] Stream error:', e); }
+    finally { await writer.close(); }
+  })();
+
+  return new Response(readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      ...corsHeaders(origin),
+    },
+  });
+}
+
+/* ─── POST /firefly-image — Generate image via Adobe Firefly, store in R2, return public URL ─── */
+
+async function handleFireflyImage(request, env) {
+  const origin = request.headers.get('Origin') || '';
+  if (!env.FIREFLY_CLIENT_ID || !env.FIREFLY_CLIENT_SECRET) {
+    return new Response(JSON.stringify({ error: 'Firefly credentials not configured. Run: npx wrangler secret put FIREFLY_CLIENT_ID' }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
   }
@@ -1308,99 +1429,88 @@ async function handleGeminiImage(request, env) {
     });
   }
 
-  const geminiResp = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': env.GEMINI_API_KEY,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseModalities: ['IMAGE', 'TEXT'] },
-      }),
+  // Get Firefly access token via client credentials
+  const tokenResp = await fetch('https://ims-na1.adobelogin.com/ims/token/v3', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: env.FIREFLY_CLIENT_ID,
+      client_secret: env.FIREFLY_CLIENT_SECRET,
+      grant_type: 'client_credentials',
+      scope: 'openid,AdobeID,firefly_enterprise,firefly_api',
+    }),
+  });
+  if (!tokenResp.ok) {
+    const err = await tokenResp.text();
+    return new Response(JSON.stringify({ error: 'Firefly auth failed', detail: err }), {
+      status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+  const { access_token } = await tokenResp.json();
+
+  // Call Firefly image generation API
+  const ffResp = await fetch('https://firefly-api.adobe.io/v3/images/generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': env.FIREFLY_CLIENT_ID,
+      'Authorization': `Bearer ${access_token}`,
     },
-  );
-
-  if (!geminiResp.ok) {
-    const errText = await geminiResp.text();
-    console.error('[Gemini Image] Generation failed:', geminiResp.status, errText);
-    return new Response(JSON.stringify({ error: `Gemini ${geminiResp.status}`, detail: errText }), {
-      status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
-    });
-  }
-
-  const result = await geminiResp.json();
-  const parts = result.candidates?.[0]?.content?.parts || [];
-  const imageData = parts.find((p) => p.inlineData)?.inlineData;
-  const text = parts.find((p) => p.text)?.text || '';
-
-  if (!imageData?.data) {
-    return new Response(JSON.stringify({ error: 'No image in Gemini response', raw: result }), {
-      status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
-    });
-  }
-
-  const mimeType = imageData.mimeType || 'image/jpeg';
-  const ext = mimeType.split('/')[1] || 'jpg';
-  const imageKey = `gemini-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  const imageBytes = Uint8Array.from(atob(imageData.data), (c) => c.charCodeAt(0));
-
-  await env.IMAGES.put(imageKey, imageBytes, {
-    httpMetadata: { contentType: mimeType },
+    body: JSON.stringify({
+      prompt,
+      numVariations: 1,
+      size: { width: 1344, height: 768 },
+    }),
   });
 
-  const workerOrigin = new URL(request.url).origin;
-  const imageUrl = `${workerOrigin}/img/${imageKey}`;
+  if (!ffResp.ok) {
+    const errText = await ffResp.text();
+    return new Response(JSON.stringify({ error: `Firefly ${ffResp.status}`, detail: errText }), {
+      status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
 
-  console.log(`[Gemini Image] Generated → R2 key: ${imageKey}`);
+  const ffResult = await ffResp.json();
+  const tempUrl = ffResult.outputs?.[0]?.image?.url;
+  if (!tempUrl) {
+    return new Response(JSON.stringify({ error: 'No image URL in Firefly response', raw: ffResult }), {
+      status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
+    });
+  }
+
+  // Fetch temp URL and store in R2 for persistence
+  const imgFetch = await fetch(tempUrl);
+  const mimeType = imgFetch.headers.get('content-type') || 'image/jpeg';
+  const ext = mimeType.split('/')[1]?.split('+')[0] || 'jpg';
+  const imageKey = `firefly-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const imageBytes = new Uint8Array(await imgFetch.arrayBuffer());
+
+  await env.IMAGES.put(imageKey, imageBytes, { httpMetadata: { contentType: mimeType } });
+
+  const imageUrl = `${new URL(request.url).origin}/img/${imageKey}`;
+  console.log(`[Firefly Image] Generated → R2 key: ${imageKey}`);
 
   return new Response(JSON.stringify({
     imageUrl,
     mimeType,
-    text,
-    model: 'gemini-2.5-flash-image',
-    provider: 'gemini',
+    model: 'firefly-image-3',
+    provider: 'firefly',
   }), {
     headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
 }
 
-/* ─── GET /gemini-models — List available Gemini models for the configured API key ─── */
+/* ─── POST /kendra-search — Enterprise search via Amazon Kendra ─── */
 
-async function handleGeminiModels(request, env) {
+async function handleKendraSearch(request, env) {
   const origin = request.headers.get('Origin') || '';
-  if (!ALLOWED_ORIGINS.includes(origin)) {
-    return new Response('Forbidden', { status: 403 });
-  }
-  if (!env.GEMINI_API_KEY) {
-    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), {
+  if (!env.AWS_ACCESS_KEY_ID || !env.AWS_SECRET_ACCESS_KEY) {
+    return new Response(JSON.stringify({ error: 'AWS credentials not configured' }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
   }
-  const resp = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models?pageSize=100&key=${env.GEMINI_API_KEY}`,
-  );
-  const data = await resp.json();
-  const models = (data.models || []).map((m) => ({
-    name: m.name,
-    methods: m.supportedGenerationMethods,
-  }));
-  return new Response(JSON.stringify(models, null, 2), {
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
-  });
-}
-
-/* ─── POST /gemini-search — Grounded search via Gemini + Google Search tool ─── */
-
-async function handleGeminiSearch(request, env) {
-  const origin = request.headers.get('Origin') || '';
-  if (!ALLOWED_ORIGINS.includes(origin)) {
-    return new Response('Forbidden', { status: 403 });
-  }
-  if (!env.GEMINI_API_KEY) {
-    return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), {
+  if (!env.KENDRA_INDEX_ID) {
+    return new Response(JSON.stringify({ error: 'KENDRA_INDEX_ID not configured. Run: npx wrangler secret put KENDRA_INDEX_ID' }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
   }
@@ -1419,46 +1529,31 @@ async function handleGeminiSearch(request, env) {
     });
   }
 
-  const prompt = context ? `Context: ${context}\n\nSearch query: ${query}` : query;
+  const region = env.AWS_REGION || 'us-east-1';
+  const kendraUrl = `https://kendra.${region}.amazonaws.com/indexes/${env.KENDRA_INDEX_ID}/query`;
+  const kendraBody = JSON.stringify({ QueryText: context ? `${context}\n\n${query}` : query, PageSize: 5 });
+  const headers = await sigV4Headers('POST', kendraUrl, kendraBody, 'kendra', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
 
-  const geminiResp = await fetch(
-    'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-goog-api-key': env.GEMINI_API_KEY,
-      },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ google_search: {} }],
-      }),
-    },
-  );
+  const kendraResp = await fetch(kendraUrl, { method: 'POST', headers, body: kendraBody });
 
-  if (!geminiResp.ok) {
-    const errText = await geminiResp.text();
-    return new Response(JSON.stringify({ error: `Gemini ${geminiResp.status}`, detail: errText }), {
+  if (!kendraResp.ok) {
+    const errText = await kendraResp.text();
+    return new Response(JSON.stringify({ error: `Kendra ${kendraResp.status}`, detail: errText }), {
       status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
   }
 
-  const result = await geminiResp.json();
-  const candidate = result.candidates?.[0];
-  const answer = candidate?.content?.parts?.map((p) => p.text).filter(Boolean).join('') || '';
-  const groundingMeta = candidate?.groundingMetadata || {};
-  const sources = (groundingMeta.groundingChunks || [])
-    .map((c) => c.web)
-    .filter(Boolean)
-    .map((w) => ({ title: w.title, uri: w.uri }));
-  const searchQueries = groundingMeta.webSearchQueries || [];
+  const result = await kendraResp.json();
+  const items = result.ResultItems || [];
+  const answer = items.find((i) => i.Type === 'ANSWER')?.AdditionalAttributes?.find((a) => a.Key === 'AnswerText')?.Value?.TextWithHighlightsValue?.Text
+    || items[0]?.DocumentExcerpt?.Text || '';
+  const sources = items.slice(0, 4).map((i) => ({ title: i.DocumentTitle?.Text || 'Result', uri: i.DocumentURI || '' }));
 
   return new Response(JSON.stringify({
     answer,
     sources,
-    searchQueries,
-    model: 'gemini-3.1-flash-image-preview',
-    provider: 'gemini',
+    searchQueries: [query],
+    provider: 'kendra',
   }), {
     headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
