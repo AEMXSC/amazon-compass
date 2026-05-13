@@ -2266,7 +2266,7 @@ async function handleFireflyImage(request, env) {
   }), { headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) } });
 }
 
-/* ─── POST /titan-image — Generate image via Amazon Titan, store in R2 ─── */
+/* ─── POST /titan-image — Generate image via Amazon Nova Canvas, store in R2 ─── */
 
 async function handleTitanImage(request, env) {
   const origin = request.headers.get('Origin') || '';
@@ -2282,11 +2282,12 @@ async function handleTitanImage(request, env) {
     status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
 
-  // Titan v2 only accepts specific dimension pairs — snap to nearest valid size
+  // Nova Canvas accepts specific dimension pairs — snap to nearest valid size
   const VALID_SIZES = [
     [1024, 1024], [768, 768], [512, 512],
     [1152, 896], [1216, 832], [1344, 768], [1536, 640],
     [896, 1152], [832, 1216], [768, 1344], [640, 1536],
+    [2048, 2048], [1280, 720], [1920, 1080],
   ];
   const [w, h] = VALID_SIZES.reduce((best, [cw, ch]) => {
     return (Math.abs(cw - width) + Math.abs(ch - height)) < (Math.abs(best[0] - width) + Math.abs(best[1] - height)) ? [cw, ch] : best;
@@ -2298,7 +2299,7 @@ async function handleTitanImage(request, env) {
     imageGenerationConfig: { numberOfImages: 1, width: w, height: h, quality: 'standard', cfgScale: 8.0 },
   });
 
-  const modelId = 'amazon.titan-image-generator-v2:0';
+  const modelId = 'amazon.nova-canvas-v1:0';
   const bedrockUrl = `https://bedrock-runtime.${region}.amazonaws.com/model/${modelId}/invoke`;
   const headers = await sigV4Headers('POST', bedrockUrl, titanBody, 'bedrock', region, env.AWS_ACCESS_KEY_ID, env.AWS_SECRET_ACCESS_KEY);
 
@@ -2326,7 +2327,7 @@ async function handleTitanImage(request, env) {
   return new Response(JSON.stringify({
     imageUrl: `${new URL(request.url).origin}/img/${imageKey}`,
     mimeType: 'image/png',
-    model: 'amazon.titan-image-generator-v2:0',
+    model: 'amazon.nova-canvas-v1:0',
     provider: 'titan',
   }), { headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) } });
 }

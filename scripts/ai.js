@@ -895,7 +895,7 @@ const AEM_TOOLS = [
 
   {
     name: 'generate_amazon_image',
-    description: 'Amazon Titan Image + Page Insert — Generate an image using Amazon Titan Image Generator (running on AWS Bedrock) and insert it into a DA page. Use when the user explicitly requests Amazon or AWS image generation. Photorealistic, runs entirely within Amazon infrastructure.',
+    description: 'Amazon Nova Canvas Image + Page Insert — Generate an image using Amazon Nova Canvas (running on AWS Bedrock) and insert it into a DA page. Use when the user explicitly requests Amazon or AWS image generation. Photorealistic, runs entirely within Amazon infrastructure.',
     input_schema: {
       type: 'object',
       properties: {
@@ -5729,7 +5729,7 @@ These tools write to the real Document Authoring API. The user must be signed in
 
 **Two providers — ALWAYS ask user which to use before calling any tool:**
 
-- **generate_amazon_image** — **Amazon Titan on AWS Bedrock.** Use when user selects Titan/Amazon/AWS. Requires prompt + page_path.
+- **generate_amazon_image** — **Amazon Nova Canvas on AWS Bedrock.** Use when user selects Titan/Amazon/AWS. Requires prompt + page_path.
 - **generate_and_insert_image** — **Adobe Firefly.** Use when user selects Firefly/Adobe. Requires prompt + page_path.
 - **generate_image** — Legacy Firefly fallback. Use ONLY when generate_and_insert_image fails and user insists on Firefly.
 - **generate_image_variations** — Firefly only, returns URL without inserting.
