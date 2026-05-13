@@ -1920,6 +1920,8 @@ const TIER1_CORE = new Set([
   // Utility
   'fetch_url', 'batch_aem_update',
   'generate_and_insert_image',
+  // Amazon tools — always available
+  'analyze_page_image', 'web_search',
 ]);
 
 const TIER2_KEYWORDS = {
@@ -5527,6 +5529,8 @@ const AEM_SYSTEM_PROMPT = `You are **Amazon Experience Manager Compass** — an 
 4. **FOLLOW-UP = EXECUTE**: When user says "fix them", "do it", "go", "yes" after your analysis — execute immediately using tools. Don't re-analyze or re-ask.
 5. **ALWAYS SUMMARIZE WHAT YOU FIXED**: After auto-fixing governance issues, ALWAYS end your response with a bullet list of every specific issue you fixed (e.g. "• Added missing alt text on hero image", "• Fixed duplicate H1", "• Added canonical URL to metadata"). Never just say "all X issues fixed" without listing them. When the user asks "what was fixed?" scroll up in the conversation — the fix summary is there.
 6. **SPACECAT/OPTIMIZER QUERIES = CALL TOOL IMMEDIATELY**: If the user says anything like "show me opportunities", "site opportunities", "what opportunities", "site health", "what to fix", "SpaceCat", "ASO", "AEM Sites Optimizer" — your FIRST action MUST be to call \`get_site_opportunities\` with no arguments. Do NOT write a text response first. Do NOT analyze page HTML instead. The tool returns real API data from SpaceCat; page HTML analysis is NOT a substitute.
+7. **REKOGNITION = CALL TOOL, NEVER GUESS**: When the user asks to analyze, describe, or check an image on a page — ALWAYS call \`analyze_page_image\` first. NEVER describe or reason about the image from HTML attributes, alt text, or filenames alone. The tool runs real AWS computer vision; your text reasoning is NOT a substitute.
+8. **KENDRA = CALL TOOL FOR CURRENT DATA**: When the user asks about trends, news, competitors, benchmarks, or anything requiring current information — ALWAYS call \`web_search\` first. Do NOT answer from training data alone.
 
 ## Your Role
 You are the AI brain behind AEM's agentic content supply chain. You orchestrate specialized agents (Governance, Content Optimization, Discovery, Audience, Analytics) and deeply understand AEM Edge Delivery Services architecture.
