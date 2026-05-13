@@ -254,12 +254,14 @@ textarea:focus-visible,
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  margin-right: 4px;
+  margin-right: 6px;
+  overflow: visible;
 }
 
 .amazon-logo svg {
-  width: 36px;
-  height: 36px;
+  width: 108px;
+  height: 40px;
+  overflow: visible;
 }
 
 .header-title-block {
