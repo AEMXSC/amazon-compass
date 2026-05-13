@@ -255,13 +255,12 @@ textarea:focus-visible,
   justify-content: center;
   flex-shrink: 0;
   margin-right: 6px;
-  overflow: visible;
 }
 
-.amazon-logo svg {
-  width: 130px;
-  height: 40px;
-  overflow: visible;
+.amazon-logo-img {
+  height: 32px;
+  width: auto;
+  object-fit: contain;
 }
 
 .header-title-block {
