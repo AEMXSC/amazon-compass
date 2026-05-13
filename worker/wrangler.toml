@@ -1,4 +1,4 @@
-name = "amazon-compass-worker"
+name = "compass-ims-proxy"
 main = "ims-token-proxy.js"
 compatibility_date = "2024-01-01"
 compatibility_flags = ["nodejs_compat"]
@@ -7,33 +7,34 @@ compatibility_flags = ["nodejs_compat"]
 [browser]
 binding = "BROWSER"
 
-# R2 — stores Firefly-generated images (public via /img/:key)
+# R2 — stores Gemini-generated images (public via /img/:key)
 [[r2_buckets]]
 binding = "IMAGES"
-bucket_name = "amazon-compass-images"
+bucket_name = "compass-images"
 
 # Deploy:  npx wrangler deploy
 #
-# Adobe IMS Secrets (shared by MCP tools + Firefly image generation):
-#   npx wrangler secret put IMS_CLIENT_ID
-#   npx wrangler secret put IMS_CLIENT_SECRET
-#   npx wrangler secret put COMPASS_OAUTH_SECRET
+# Adobe IMS Secrets (same OAuth credential for S2S + user auth):
+#   npx wrangler secret put IMS_CLIENT_ID          — OAuth client ID
+#   npx wrangler secret put IMS_CLIENT_SECRET       — OAuth client secret (used by /ims/callback fallback)
+#   npx wrangler secret put COMPASS_OAUTH_SECRET    — (optional) overrides IMS_CLIENT_SECRET for /ims/callback
 #
-# GitHub OAuth:
+# GitHub OAuth App Secrets:
 #   npx wrangler secret put GITHUB_CLIENT_ID
 #   npx wrangler secret put GITHUB_CLIENT_SECRET
 #
-# Workfront:
-#   npx wrangler secret put WORKFRONT_API_KEY
+# Workfront MCP Secret:
+#   npx wrangler secret put WORKFRONT_API_KEY         — Workfront API key for MCP auth
 #
-# AWS Bedrock + Kendra (SigV4 signing — replaces Gemini API key):
+# Google Gemini (image generation — Nano Banana 2):
+#   npx wrangler secret put GEMINI_API_KEY
+#
+# AWS Bedrock + Kendra (Amazon Compass routes):
 #   npx wrangler secret put AWS_ACCESS_KEY_ID
 #   npx wrangler secret put AWS_SECRET_ACCESS_KEY
 #   npx wrangler secret put AWS_REGION              (e.g. us-east-1)
-#   npx wrangler secret put KENDRA_INDEX_ID         (Amazon Kendra Index ID from AWS Console)
+#   npx wrangler secret put KENDRA_INDEX_ID
 #
-# Note: Firefly uses IMS_CLIENT_ID + IMS_CLIENT_SECRET (no separate Firefly secrets needed)
-#
-# Callback URLs (register in developer consoles):
-#   GitHub: https://amazon-compass-worker.<account>.workers.dev/github/callback
-#   Adobe:  https://amazon-compass-worker.<account>.workers.dev/ims/callback
+# Callback URLs (register in respective developer consoles):
+#   GitHub:  https://compass-ims-proxy.compass-xsc.workers.dev/github/callback
+#   Adobe:   https://compass-ims-proxy.compass-xsc.workers.dev/ims/callback
