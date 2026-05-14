@@ -202,8 +202,50 @@ async function route(request, env) {
   if (url.pathname.startsWith('/spacecat/') && (request.method === 'GET' || request.method === 'POST')) {
     return handleSpacecatProxy(request, env);
   }
+  if (url.pathname === '/fetch' && request.method === 'POST') {
+    return handleUrlFetch(request);
+  }
 
   return new Response('Compass Auth Gateway', { status: 200 });
+}
+
+/* ─── POST /fetch — Server-side URL proxy for GEO audits ─── */
+
+async function handleUrlFetch(request) {
+  const origin = request.headers.get('Origin') || '';
+  let targetUrl;
+  try {
+    ({ url: targetUrl } = await request.json());
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON body' }, 400, origin);
+  }
+  if (!targetUrl || !/^https?:\/\//i.test(targetUrl)) {
+    return jsonResponse({ error: 'Invalid URL — must start with http:// or https://' }, 400, origin);
+  }
+  try {
+    const resp = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; CompassBot/1.0; +https://aemxsc.github.io/compass/)',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+      redirect: 'follow',
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    const text = await resp.text();
+    const truncated = text.length > 200000;
+    return jsonResponse({
+      url: resp.url,
+      requested_url: targetUrl,
+      status: resp.status,
+      content_type: contentType,
+      content_length: text.length,
+      truncated,
+      content: truncated ? text.slice(0, 200000) : text,
+    }, 200, origin);
+  } catch (e) {
+    return jsonResponse({ error: `Fetch failed: ${e.message}`, url: targetUrl }, 502, origin);
+  }
 }
 
 /* ─── GET /auth — S2S token for Compass ─── */
