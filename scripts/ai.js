@@ -1073,6 +1073,90 @@ const AEM_TOOLS = [
     },
   },
 
+  /* ─── BGA (Brand Governance Agent) — direct access tools ─── */
+
+  {
+    name: 'bga_list_brands',
+    description: 'Governance Agent — List all brands configured in the Experience Governance service. Returns brand IDs, names, and descriptions. Use before bga_get_brand or bga_get_checks_by_brand.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'bga_get_brand',
+    description: 'Governance Agent — Get full details for a specific brand: values, culture guidelines, visual identity rules, tone of voice, and all configured checks.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        brand_id: { type: 'string', description: 'Brand ID from bga_list_brands' },
+      },
+      required: ['brand_id'],
+    },
+  },
+  {
+    name: 'bga_get_checks',
+    description: 'Governance Agent — List all available governance check types across all brands. Returns check IDs, names, categories (tone, imagery, terminology, Values & Culture, etc.).',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'bga_get_checks_by_brand',
+    description: 'Governance Agent — Get all governance checks configured for a specific brand. Returns granular rules: Values & Culture, terminology, image compliance, CTA rules, etc.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        brand_id: { type: 'string', description: 'Brand ID to get checks for' },
+      },
+      required: ['brand_id'],
+    },
+  },
+  {
+    name: 'bga_get_checks_by_url',
+    description: 'Governance Agent — Get governance checks applicable to a specific page URL. Returns all rules that apply to this domain/page. Use to discover what rules are active before evaluating.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Full page URL to check rules for' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'bga_evaluate_page',
+    description: 'Governance Agent — Evaluate a full page against all applicable brand governance rules. Returns pass/fail per check with detailed findings and recommendations. More granular than run_governance_check.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        url: { type: 'string', description: 'Full page URL to evaluate' },
+        brand_id: { type: 'string', description: 'Optional — scope evaluation to a specific brand' },
+      },
+      required: ['url'],
+    },
+  },
+  {
+    name: 'bga_evaluate_text',
+    description: 'Governance Agent — Evaluate a text snippet against brand governance rules (tone, terminology, Values & Culture, inclusive language). Use for checking copy before it goes on a page.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: 'Text content to evaluate' },
+        brand_id: { type: 'string', description: 'Brand to evaluate against' },
+        check_ids: { type: 'array', items: { type: 'string' }, description: 'Optional — specific check IDs to run (from bga_get_checks)' },
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'bga_evaluate_image',
+    description: 'Governance Agent — Evaluate an image against brand governance rules (visual identity, imagery guidelines, logo compliance). Accepts a DAM asset path or public image URL.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        image_url: { type: 'string', description: 'Public image URL or AEM DAM delivery URL' },
+        brand_id: { type: 'string', description: 'Brand to evaluate against' },
+        check_ids: { type: 'array', items: { type: 'string' }, description: 'Optional — specific check IDs to run' },
+      },
+      required: ['image_url'],
+    },
+  },
+
   /* ─── Content Optimization Agent (extended) ─── */
 
   {
@@ -1790,6 +1874,14 @@ export const TOOL_AGENT_MAP = {
   get_brand_guidelines: 'Governance Agent',
   check_asset_expiry: 'Governance Agent',
   audit_content: 'Governance Agent',
+  bga_list_brands: 'Governance Agent',
+  bga_get_brand: 'Governance Agent',
+  bga_get_checks: 'Governance Agent',
+  bga_get_checks_by_brand: 'Governance Agent',
+  bga_get_checks_by_url: 'Governance Agent',
+  bga_evaluate_page: 'Governance Agent',
+  bga_evaluate_text: 'Governance Agent',
+  bga_evaluate_image: 'Governance Agent',
 
   // ── Content Optimization Agent (variations, images, renditions) ──
   create_content_variant: 'Content Optimization Agent',
@@ -1926,7 +2018,7 @@ const TIER1_CORE = new Set([
 
 const TIER2_KEYWORDS = {
   analytics: ['cja_visualize', 'cja_kpi_pulse', 'cja_executive_briefing', 'cja_anomaly_triage', 'get_analytics_insights'],
-  governance: ['run_governance_check', 'get_brand_guidelines', 'check_asset_expiry', 'audit_content'],
+  governance: ['run_governance_check', 'get_brand_guidelines', 'check_asset_expiry', 'audit_content', 'bga_list_brands', 'bga_get_brand', 'bga_get_checks', 'bga_get_checks_by_brand', 'bga_get_checks_by_url', 'bga_evaluate_page', 'bga_evaluate_text', 'bga_evaluate_image'],
   contentqa:  ['run_content_qa', 'audit_content'],
   workfront: ['create_workfront_task', 'list_workfront_projects', 'get_workfront_project', 'list_workfront_tasks', 'update_workfront_task', 'list_workfront_approvals', 'ask_workfront', 'get_project_health', 'check_workfront_connection'],
   // DAM search (was 14-tool bucket — now split into 3 focused buckets)
@@ -1951,7 +2043,7 @@ const TIER2_KEYWORDS = {
 
 const INTENT_PATTERNS = {
   analytics: /\b(analytics?|cja|metric|kpi|dashboard|report|insight|data|trend|anomal)/i,
-  governance: /\b(governance|brand.{0,10}(check|compliance|guideline|policy)|compliance|audit|policy|expir|drm|licens|rights)\b/i,
+  governance: /\b(governance|brand.{0,10}(check|compliance|guideline|policy|evaluat)|compliance|audit|policy|expir|drm|licens|rights|bga_|evaluate.{0,10}(page|text|image)|brand.?check|brand.?evaluat)\b/i,
   contentqa:  /\b(content.{0,10}(quality|qa|check)|seo|readab|meta.?tag|broken.?link|technical.?check)\b/i,
   workfront: /\b(workfront|project|task|approval|assign|deadline)/i,
   // Assets: fires for explicit DAM search/browse — NOT on "image" alone (prevents 14-tool flood)
@@ -3135,6 +3227,88 @@ export async function executeTool(name, input) {
       } catch (err) {
         return mcpError('run_governance_check', err);
       }
+    }
+
+    /* ─── BGA Direct-Access Tools ─── */
+
+    case 'bga_list_brands': {
+      const [authed] = await Promise.all([ensureAuth(), governanceMcp.initSession().catch(() => {})]);
+      if (!authed) return authRequiredError('bga_list_brands');
+      try {
+        const result = await governanceMcp.callTool('bga_list_brands', {});
+        return JSON.stringify({ ...result, _source: 'governance', source: 'AEM Experience Governance MCP' }, null, 2);
+      } catch (err) { return mcpError('bga_list_brands', err); }
+    }
+
+    case 'bga_get_brand': {
+      const [authed] = await Promise.all([ensureAuth(), governanceMcp.initSession().catch(() => {})]);
+      if (!authed) return authRequiredError('bga_get_brand');
+      try {
+        const result = await governanceMcp.callTool('bga_get_brand', { brand_id: input.brand_id });
+        return JSON.stringify({ ...result, _source: 'governance', source: 'AEM Experience Governance MCP' }, null, 2);
+      } catch (err) { return mcpError('bga_get_brand', err); }
+    }
+
+    case 'bga_get_checks': {
+      const [authed] = await Promise.all([ensureAuth(), governanceMcp.initSession().catch(() => {})]);
+      if (!authed) return authRequiredError('bga_get_checks');
+      try {
+        const result = await governanceMcp.callTool('bga_get_checks', {});
+        return JSON.stringify({ ...result, _source: 'governance', source: 'AEM Experience Governance MCP' }, null, 2);
+      } catch (err) { return mcpError('bga_get_checks', err); }
+    }
+
+    case 'bga_get_checks_by_brand': {
+      const [authed] = await Promise.all([ensureAuth(), governanceMcp.initSession().catch(() => {})]);
+      if (!authed) return authRequiredError('bga_get_checks_by_brand');
+      try {
+        const result = await governanceMcp.callTool('bga_get_checks_by_brand', { brand_id: input.brand_id });
+        return JSON.stringify({ ...result, _source: 'governance', source: 'AEM Experience Governance MCP' }, null, 2);
+      } catch (err) { return mcpError('bga_get_checks_by_brand', err); }
+    }
+
+    case 'bga_get_checks_by_url': {
+      const [authed] = await Promise.all([ensureAuth(), governanceMcp.initSession().catch(() => {})]);
+      if (!authed) return authRequiredError('bga_get_checks_by_url');
+      try {
+        const result = await governanceMcp.callTool('bga_get_checks_by_url', { url: input.url });
+        return JSON.stringify({ ...result, _source: 'governance', source: 'AEM Experience Governance MCP' }, null, 2);
+      } catch (err) { return mcpError('bga_get_checks_by_url', err); }
+    }
+
+    case 'bga_evaluate_page': {
+      const [authed] = await Promise.all([ensureAuth(), governanceMcp.initSession().catch(() => {})]);
+      if (!authed) return authRequiredError('bga_evaluate_page');
+      try {
+        const params = { url: input.url };
+        if (input.brand_id) params.brand_id = input.brand_id;
+        const result = await governanceMcp.callTool('bga_evaluate_page', params);
+        return JSON.stringify({ ...result, _source: 'governance', source: 'AEM Experience Governance MCP' }, null, 2);
+      } catch (err) { return mcpError('bga_evaluate_page', err); }
+    }
+
+    case 'bga_evaluate_text': {
+      const [authed] = await Promise.all([ensureAuth(), governanceMcp.initSession().catch(() => {})]);
+      if (!authed) return authRequiredError('bga_evaluate_text');
+      try {
+        const params = { text: input.text };
+        if (input.brand_id) params.brand_id = input.brand_id;
+        if (input.check_ids) params.check_ids = input.check_ids;
+        const result = await governanceMcp.callTool('bga_evaluate_text', params);
+        return JSON.stringify({ ...result, _source: 'governance', source: 'AEM Experience Governance MCP' }, null, 2);
+      } catch (err) { return mcpError('bga_evaluate_text', err); }
+    }
+
+    case 'bga_evaluate_image': {
+      const [authed] = await Promise.all([ensureAuth(), governanceMcp.initSession().catch(() => {})]);
+      if (!authed) return authRequiredError('bga_evaluate_image');
+      try {
+        const params = { image_url: input.image_url };
+        if (input.brand_id) params.brand_id = input.brand_id;
+        if (input.check_ids) params.check_ids = input.check_ids;
+        const result = await governanceMcp.callTool('bga_evaluate_image', params);
+        return JSON.stringify({ ...result, _source: 'governance', source: 'AEM Experience Governance MCP' }, null, 2);
+      } catch (err) { return mcpError('bga_evaluate_image', err); }
     }
 
     case 'run_content_qa': {
