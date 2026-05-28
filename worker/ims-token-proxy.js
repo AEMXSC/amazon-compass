@@ -2250,8 +2250,7 @@ async function handleBedrockInvoke(request, env) {
 async function handleFireflyImage(request, env) {
   const origin = request.headers.get('Origin') || '';
   const clientId = env.IMS_CLIENT_ID;
-  const clientSecret = env.IMS_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
+  if (!clientId) {
     return new Response(JSON.stringify({ error: 'IMS credentials not configured' }), {
       status: 500, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
@@ -2267,17 +2266,15 @@ async function handleFireflyImage(request, env) {
     status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
   });
 
-  const tokenResp = await fetch('https://ims-na1.adobelogin.com/ims/token/v3', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: 'client_credentials', scope: 'openid,AdobeID,firefly_enterprise,firefly_api' }),
-  });
-  if (!tokenResp.ok) {
-    return new Response(JSON.stringify({ error: 'Firefly auth failed', detail: await tokenResp.text() }), {
+  // Reuse the cached S2S token (already has firefly_api scope in IMS_SCOPE)
+  let access_token;
+  try {
+    access_token = await getS2SToken(env);
+  } catch (e) {
+    return new Response(JSON.stringify({ error: 'Firefly auth failed', detail: e.message }), {
       status: 502, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) },
     });
   }
-  const { access_token } = await tokenResp.json();
 
   const ffResp = await fetch('https://firefly-api.adobe.io/v3/images/generate', {
     method: 'POST',
