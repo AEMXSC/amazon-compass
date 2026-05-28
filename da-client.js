@@ -8,6 +8,7 @@
  */
 
 import { fetchWithToken, getToken, getUserToken } from './ims.js';
+import { edsPreviewMcp } from './mcp-client.js';
 import * as mcp from './da-mcp-client.js';
 
 const DA_ADMIN = 'https://admin.da.live';
@@ -146,6 +147,19 @@ async function fetchHlxAdmin(url, opts = {}) {
 
 export async function previewPage(path) {
   requireSite();
+  // Try eds-preview MCP first — DA's own preview service, no GitHub auth needed.
+  try {
+    const result = await edsPreviewMcp.callTool('content_preview', {
+      org: DA_ORG, repo: DA_REPO, branch: DA_BRANCH, path,
+    });
+    if (result && !result.error) {
+      console.log('[DA] Preview via eds-preview MCP: success');
+      return { ok: true, status: 200 };
+    }
+  } catch (e) {
+    console.warn('[DA] eds-preview MCP unavailable, falling back to direct:', e.message);
+  }
+  // Fallback: direct admin.hlx.page call
   const url = `https://admin.hlx.page/preview/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
   return fetchHlxAdmin(url, { method: 'POST' });
 }

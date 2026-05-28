@@ -227,6 +227,7 @@ export const acrobatMcp = createMcpClient('/adobe/mcp/acrobat', 'Acrobat');
 /** Marketing Agent — AJO journeys, Target decisioning, audience activation. */
 export const marketingMcp = createMcpClient('/adobe/mcp/marketing-agent', 'Marketing-Agent');
 export const experienceProductionMcp = createMcpClient('/adobe/mcp/experience-production', 'Experience-Production');
+export const edsPreviewMcp = createMcpClient('/adobe/mcp/eds-preview', 'EDS-Preview');
 
 /** Spacecat / AEM Sites Optimizer — site audits, SEO, CWV, broken backlinks. User IMS token only — no S2S fallback. */
 export const spacecatMcp = createMcpClient('https://spacecat.experiencecloud.live/@/mcp', 'Spacecat', { tokenFn: getUserToken });
