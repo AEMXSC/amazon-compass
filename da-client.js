@@ -121,17 +121,26 @@ export async function deletePage(path) {
 /* ─── Admin API — admin.hlx.page ─── */
 
 /**
- * Send a request to admin.hlx.page using the best available IMS token.
- * getUserToken() scans localStorage for any valid IMS token (including aem-extension-builder
- * which carries the AEM authoring scopes that admin.hlx.page requires for DA sites).
- * Falls back to the darkalley/S2S token if no AEM token is present.
+ * Send a request to admin.hlx.page using the best available token.
+ * Priority:
+ *   1. GitHub PAT (ew-github-token) with "token" format — admin.hlx.page checks
+ *      GitHub org membership, so this is the most reliable path for EDS repos.
+ *   2. AEM IMS token (aem-extension-builder or darkalley) — only works if the
+ *      site's admin.json explicitly allows the IMS user.
  */
 async function fetchHlxAdmin(url, opts = {}) {
-  const token = getUserToken() || getToken();
-  if (!token) throw new Error('Not authenticated');
+  const ghToken = localStorage.getItem('ew-github-token');
+  if (ghToken) {
+    return fetch(url, {
+      ...opts,
+      headers: { Authorization: `token ${ghToken}`, ...opts.headers },
+    });
+  }
+  const imsToken = getUserToken() || getToken();
+  if (!imsToken) throw new Error('Not authenticated');
   return fetch(url, {
     ...opts,
-    headers: { Authorization: `Bearer ${token}`, ...opts.headers },
+    headers: { Authorization: `Bearer ${imsToken}`, ...opts.headers },
   });
 }
 
