@@ -386,25 +386,6 @@ export async function handlePkceCallback() { return false; }
 /* ─── Init ─── */
 
 export async function loadIms() {
-  // Clean up stale tokens from wrong clients — iterate all keys, remove any with aem-extension-builder
-  try {
-    const keysToRemove = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.includes('aem-extension-builder')) keysToRemove.push(key);
-    }
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
-    if (keysToRemove.length > 0) console.log(`[IMS] Cleared ${keysToRemove.length} stale aem-extension-builder entries`);
-  } catch { /* */ }
-  // Also clear session storage
-  try {
-    const sessionKeysToRemove = [];
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const key = sessionStorage.key(i);
-      if (key && key.includes('aem-extension-builder')) sessionKeysToRemove.push(key);
-    }
-    sessionKeysToRemove.forEach((k) => sessionStorage.removeItem(k));
-  } catch { /* */ }
 
   // Check for token in hash (imslib redirect or Worker callback)
   const hash = window.location.hash;

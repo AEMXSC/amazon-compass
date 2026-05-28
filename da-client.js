@@ -7,7 +7,7 @@
  * Configurable via configure() — call from app.js with AEM_ORG values.
  */
 
-import { fetchWithToken, getToken } from './ims.js';
+import { fetchWithToken, getToken, getUserToken } from './ims.js';
 import * as mcp from './da-mcp-client.js';
 
 const DA_ADMIN = 'https://admin.da.live';
@@ -120,28 +120,40 @@ export async function deletePage(path) {
 
 /* ─── Admin API — admin.hlx.page ─── */
 
+/**
+ * Send a request to admin.hlx.page using the best available IMS token.
+ * getUserToken() scans localStorage for any valid IMS token (including aem-extension-builder
+ * which carries the AEM authoring scopes that admin.hlx.page requires for DA sites).
+ * Falls back to the darkalley/S2S token if no AEM token is present.
+ */
+async function fetchHlxAdmin(url, opts = {}) {
+  const token = getUserToken() || getToken();
+  if (!token) throw new Error('Not authenticated');
+  return fetch(url, {
+    ...opts,
+    headers: { Authorization: `Bearer ${token}`, ...opts.headers },
+  });
+}
+
 export async function previewPage(path) {
   requireSite();
   const url = `https://admin.hlx.page/preview/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
-  const resp = await fetchWithToken(url, { method: 'POST' });
-  return resp;
+  return fetchHlxAdmin(url, { method: 'POST' });
 }
 
 export async function publishPage(path) {
   requireSite();
   const url = `https://admin.hlx.page/live/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
-  const resp = await fetchWithToken(url, { method: 'POST' });
-  return resp;
+  return fetchHlxAdmin(url, { method: 'POST' });
 }
 
 /**
- * Get resource status from admin.hlx.page — NO AUTH REQUIRED.
- * Returns preview/live status, URLs, last modified, permissions.
+ * Get resource status from admin.hlx.page — requires IMS auth on DA-backed sites.
  */
 export async function getStatus(path) {
   requireSite();
   const url = `https://admin.hlx.page/status/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
-  const resp = await fetch(url);
+  const resp = await fetchHlxAdmin(url);
   if (!resp.ok) throw new Error(`Status check failed: ${resp.status}`);
   return resp.json();
 }
@@ -150,63 +162,56 @@ export async function getStatus(path) {
 export async function unpublishPreview(path) {
   requireSite();
   const url = `https://admin.hlx.page/preview/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
-  const resp = await fetchWithToken(url, { method: 'DELETE' });
-  return resp;
+  return fetchHlxAdmin(url, { method: 'DELETE' });
 }
 
 /** Unpublish from live (.aem.live) */
 export async function unpublishLive(path) {
   requireSite();
   const url = `https://admin.hlx.page/live/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
-  const resp = await fetchWithToken(url, { method: 'DELETE' });
-  return resp;
+  return fetchHlxAdmin(url, { method: 'DELETE' });
 }
 
 /** Purge CDN cache for a path */
 export async function purgeCache(path) {
   requireSite();
   const url = `https://admin.hlx.page/cache/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
-  const resp = await fetchWithToken(url, { method: 'POST' });
-  return resp;
+  return fetchHlxAdmin(url, { method: 'POST' });
 }
 
 /** Sync code from GitHub to CDN */
 export async function syncCode() {
   requireSite();
   const url = `https://admin.hlx.page/code/${DA_ORG}/${DA_REPO}/${DA_BRANCH}`;
-  const resp = await fetchWithToken(url, { method: 'POST' });
-  return resp;
+  return fetchHlxAdmin(url, { method: 'POST' });
 }
 
 /** Bulk preview — preview all pages under a path (use "/*" for entire site) */
 export async function bulkPreview(paths) {
   requireSite();
   const url = `https://admin.hlx.page/preview/${DA_ORG}/${DA_REPO}/${DA_BRANCH}/*`;
-  const resp = await fetchWithToken(url, {
+  return fetchHlxAdmin(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paths }),
   });
-  return resp;
 }
 
 /** Bulk publish — publish all pages under a path */
 export async function bulkPublish(paths) {
   requireSite();
   const url = `https://admin.hlx.page/live/${DA_ORG}/${DA_REPO}/${DA_BRANCH}/*`;
-  const resp = await fetchWithToken(url, {
+  return fetchHlxAdmin(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ paths }),
   });
-  return resp;
 }
 
 /** Re-index a path (updates query-index) */
 export async function reindex(path) {
   const url = `https://admin.hlx.page/index/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
-  const resp = await fetchWithToken(url, { method: 'POST' });
-  return resp;
+  return fetchHlxAdmin(url, { method: 'POST' });
 }
 
 /* ─── URL helpers ─── */
