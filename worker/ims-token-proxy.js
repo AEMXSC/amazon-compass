@@ -2278,7 +2278,7 @@ async function handleFireflyImage(request, env) {
 
   const ffResp = await fetch('https://firefly-api.adobe.io/v3/images/generate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'x-api-key': clientId, 'Authorization': `Bearer ${access_token}` },
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'x-api-key': clientId, 'Authorization': `Bearer ${access_token}` },
     body: JSON.stringify({ prompt, numVariations: 1, size: { width: 1344, height: 768 } }),
   });
   if (!ffResp.ok) {
