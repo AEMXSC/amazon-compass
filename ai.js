@@ -489,6 +489,53 @@ const AEM_TOOLS = [
     },
   },
 
+  /* ─── Experience Production Agent ─── */
+  {
+    name: 'process_page',
+    description: 'Generate or update page content on an EDS or AEM Cloud site using AI. Provide the page URL and natural-language instructions. Returns an execution_id to poll with get_epa_status.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        request_text: { type: 'string', description: 'Natural language request with page URL and instructions. E.g. "Update hero section with Q4 promotions" followed by the page URL.' },
+      },
+      required: ['request_text'],
+    },
+  },
+  {
+    name: 'get_epa_status',
+    description: 'Poll the status of a page generation job started by process_page. Returns status (running/completed/error), progress, and preview links when done.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        execution_id: { type: 'string', description: 'The execution_id returned by process_page' },
+      },
+      required: ['execution_id'],
+    },
+  },
+  {
+    name: 'provide_page_feedback',
+    description: 'Iterate on a completed page generation job with follow-up instructions. Faster than starting over — skips download/build steps.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        execution_id: { type: 'string', description: 'The execution_id of the completed job' },
+        feedback: { type: 'string', description: 'Follow-up instructions for the iteration' },
+      },
+      required: ['execution_id', 'feedback'],
+    },
+  },
+  {
+    name: 'accept_page_changes',
+    description: 'Accept and apply AI-generated page changes to the original page. Promotes AEM launch or finalizes EDS doc. Preview refreshes automatically after acceptance.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        execution_id: { type: 'string', description: 'The execution_id of the completed job to accept' },
+      },
+      required: ['execution_id'],
+    },
+  },
+
   /* ─── Audience Agent ─── */
 
   {
@@ -1587,6 +1634,19 @@ async function ensureAuth() {
   }
 }
 
+/** Maps EPA execution_id → page path so we can auto-refresh the preview on completion. */
+const epaExecutionPaths = new Map();
+
+/** Extract a page path from an EPA request_text that may contain a full URL. */
+function extractEpaPagePath(requestText) {
+  try {
+    const match = requestText.match(/https?:\/\/[^\s"']+/);
+    if (!match) return null;
+    const url = new URL(match[0]);
+    return url.pathname || '/';
+  } catch { return null; }
+}
+
 /** Standardized error for tools when user is not signed in. */
 function authRequiredError(toolName) {
   return JSON.stringify({
@@ -2474,6 +2534,55 @@ async function executeTool(name, input) {
       } catch (err) {
         return mcpError('run_governance_check', err);
       }
+    }
+
+    /* ─── Experience Production Agent ─── */
+
+    case 'process_page': {
+      if (!(await ensureAuth())) return authRequiredError('process_page');
+      try {
+        const result = await experienceProductionMcp.callTool('process_page_tool', { request_text: input.request_text });
+        if (result?.execution_id && input.request_text) {
+          const path = extractEpaPagePath(input.request_text);
+          if (path) epaExecutionPaths.set(result.execution_id, path);
+        }
+        return JSON.stringify({ ...result, _source: 'connected', source: 'Experience Production Agent' }, null, 2);
+      } catch (err) { return mcpError('process_page', err); }
+    }
+
+    case 'get_epa_status': {
+      if (!(await ensureAuth())) return authRequiredError('get_epa_status');
+      try {
+        const result = await experienceProductionMcp.callTool('get_status_tool', { execution_id: input.execution_id });
+        const enriched = { ...result, _source: 'connected', source: 'Experience Production Agent' };
+        if (result?.status === 'completed') {
+          const pagePath = epaExecutionPaths.get(input.execution_id) || '/';
+          enriched._action = 'refresh_preview';
+          enriched._preview_path = pagePath;
+        }
+        return JSON.stringify(enriched, null, 2);
+      } catch (err) { return mcpError('get_epa_status', err); }
+    }
+
+    case 'provide_page_feedback': {
+      if (!(await ensureAuth())) return authRequiredError('provide_page_feedback');
+      try {
+        const result = await experienceProductionMcp.callTool('provide_feedback_tool', { execution_id: input.execution_id, feedback: input.feedback });
+        return JSON.stringify({ ...result, _source: 'connected', source: 'Experience Production Agent' }, null, 2);
+      } catch (err) { return mcpError('provide_page_feedback', err); }
+    }
+
+    case 'accept_page_changes': {
+      if (!(await ensureAuth())) return authRequiredError('accept_page_changes');
+      try {
+        const result = await experienceProductionMcp.callTool('accept_changes_tool', { execution_id: input.execution_id });
+        const enriched = { ...result, _source: 'connected', source: 'Experience Production Agent' };
+        const pagePath = epaExecutionPaths.get(input.execution_id) || '/';
+        enriched._action = 'refresh_preview';
+        enriched._preview_path = pagePath;
+        epaExecutionPaths.delete(input.execution_id);
+        return JSON.stringify(enriched, null, 2);
+      } catch (err) { return mcpError('accept_page_changes', err); }
     }
 
     /* ─── Audience Agent ─── */
