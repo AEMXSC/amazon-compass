@@ -2398,15 +2398,22 @@ async function handleRealChat(text, file) {
           setTimeout(() => window.__refreshJcrPreview?.(), 1000);
         } else if (previewFrame && AEM_ORG.previewOrigin) {
           // DA site: reload from .aem.page (preview trigger is synchronous — content is ready)
-          setTimeout(() => {
-            const url = AEM_ORG.previewOrigin + path + '?_t=' + Date.now();
+          // Update URL bar immediately so user sees path change right away
+          const displayUrl = AEM_ORG.previewOrigin + path;
+          if (previewUrlText) previewUrlText.textContent = displayUrl.replace(/^https?:\/\//, '');
+          if (previewDot) previewDot.classList.add('connected');
+          updateBreadcrumb(path);
+          const reloadFrame = () => {
+            const url = displayUrl + '?_t=' + Date.now();
             previewFrame.removeAttribute('srcdoc');
             previewFrame.src = url;
             cachedPageHTML = null;
             cachedPageHTMLTimestamp = 0;
-            // Re-fetch page context in background so next edit has fresh HTML
             ensurePageContext().catch(() => {});
-          }, 2000);
+          };
+          da.previewPage(path)
+            .then((resp) => { if (resp.ok) reloadFrame(); else setTimeout(reloadFrame, 2000); })
+            .catch(() => setTimeout(reloadFrame, 2000));
         }
       }
 
