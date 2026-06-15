@@ -11,7 +11,7 @@
 import { buildCustomerContext, getActiveProfile } from './customer-profiles.js';
 import { KNOWN_SITES, resolveSite, listKnownSites, buildKnownSitesPrompt } from './known-sites.js';
 import * as da from './da-client.js';
-import { isSignedIn, getToken, signIn } from './ims.js';
+import { isSignedIn, getToken, getUserToken, signIn } from './ims.js';
 import { hasGitHubToken, readContent as ghReadContent, writeContent as ghWriteContent, triggerPreview as ghTriggerPreview, getRepoInfo, listBranches as ghListBranches } from './github-content.js';
 import * as aemContent from './aem-content-mcp-client.js';
 import { contentMcp, workfrontMcp, experienceProductionMcp, getMcpRegistry, getAllMcpClaudeTools, initAndRegister, governanceMcp, fireflyMcp, registerMcpTools } from './mcp-client.js';
@@ -26,7 +26,8 @@ import { buildPlaybookPrompt } from './xsc-playbook.js';
 import { buildKnowledgePrompt } from './aem-knowledge.js';
 import { checkCitationReadability, formatResultForChat, renderResultsHTML } from './llmo-checker.js';
 
-const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://compass-ims-proxy.compass-xsc.workers.dev';
+const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://REPLACE_WITH_LAMBDA_FUNCTION_URL';
+if (AMAZON_WORKER_BASE.includes('REPLACE_WITH')) console.error('[Amazon Compass] Lambda URL not configured. Run: localStorage.setItem("ew-amazon-worker", "<Function URL>") in DevTools.');
 const CLAUDE_API = `${AMAZON_WORKER_BASE}/bedrock/invoke`;
 const MODEL = 'us.anthropic.claude-opus-4-6-v1';
 const STORAGE_KEY = 'ew-claude-key';
@@ -2178,13 +2179,13 @@ function mcpError(toolName, err) {
  * Calls firefly-api.adobe.io directly with the user's IMS token.
  */
 async function callFireflyApi(prompt, { width = 1344, height = 768, model = 'firefly-image-3' } = {}) {
-  // Prefer the Firefly-specific token (from Dev Console → Generate access token)
-  // Fall back to the user's IMS session token
-  const token = localStorage.getItem('ew-s2s-token') || getToken();
-  if (!token) throw new Error('No token available for Firefly. Generate one in Adobe Developer Console → Firefly API → Generate access token, then paste it in Compass Settings.');
+  // Token priority: manually-pasted S2S/Dev Console token → any IMS user session → stored IMS token
+  const token = localStorage.getItem('ew-s2s-token') || getUserToken() || getToken();
+  if (!token) throw new Error('No token available for Firefly. In Compass Settings → paste an access token generated from Adobe Developer Console (AEM XSC Showcase → OAuth Server-to-Server → Generate access token).');
 
-  // Client ID for the Firefly API project in Adobe Developer Console
-  const FIREFLY_CLIENT_ID = 'acd5f7410f024fb29412f6add92d3751';
+  // x-api-key: configurable via localStorage so users can supply their own Dev Console client_id.
+  // Falls back to the Compass shared key when not set.
+  const FIREFLY_CLIENT_ID = localStorage.getItem('ew-firefly-client-id') || 'acd5f7410f024fb29412f6add92d3751';
 
   const resp = await fetch('https://firefly-api.adobe.io/v3/images/generate', {
     method: 'POST',
@@ -2679,7 +2680,7 @@ export async function executeTool(name, input) {
           const [imgResult, currentHTML] = await Promise.all([
             fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getUserToken() || getToken() || ''}` },
               body: JSON.stringify({ prompt: input.image_prompt }),
             }).then((r) => r.json()),
             da.getPage(htmlPath).catch(() => null),
@@ -3367,10 +3368,21 @@ export async function executeTool(name, input) {
         const org = da.getOrg(); const repo = da.getRepo(); const branch = da.getBranch();
         const previewUrl = `https://${branch}--${repo.toLowerCase()}--${org.toLowerCase()}.aem.page${pagePath}`;
         const daUrl = `https://da.live/edit#/${org}/${repo}${pagePath === '/' ? '/index' : pagePath}`;
+
+        // Trigger CDN preview — new pages are 404 until this is called
+        let previewStatus = 'skipped';
+        try {
+          const previewResp = await da.previewPage(pagePath);
+          previewStatus = previewResp.ok ? 'success' : `pending (${previewResp.status})`;
+        } catch (previewErr) {
+          previewStatus = `pending: ${previewErr.message}`;
+        }
+
         return JSON.stringify({
           status: 'created', page_path: pagePath,
           preview_url: previewUrl, da_edit_url: daUrl,
-          message: `Page created at ${pagePath}. Use edit_page_content to add content or preview_page to trigger preview.`,
+          preview_status: previewStatus,
+          message: `Page created at ${pagePath} and preview triggered.`,
           _action: 'refresh_preview', _preview_path: pagePath,
           _source: 'connected',
         }, null, 2);
@@ -3812,7 +3824,7 @@ export async function executeTool(name, input) {
           if (dims.height) workerBody.height = dims.height;
           const wResp = await fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getUserToken() || getToken() || ''}` },
             body: JSON.stringify(workerBody),
           });
           const wResult = await wResp.json();
@@ -3908,7 +3920,7 @@ export async function executeTool(name, input) {
       try {
         const resp = await fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getUserToken() || getToken() || ''}` },
           body: JSON.stringify({ prompt: input.prompt }),
         });
         const result = await resp.json();
