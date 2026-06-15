@@ -7,7 +7,7 @@
  * Configurable via configure() — call from app.js with AEM_ORG values.
  */
 
-import { fetchWithToken, getToken, getUserToken } from './ims.js';
+import { fetchWithToken, getToken, getUserToken, getSiteToken, clearSiteToken } from './ims.js';
 import { edsPreviewMcp } from './mcp-client.js';
 import * as mcp from './da-mcp-client.js';
 
@@ -20,11 +20,15 @@ let DA_BRANCH = 'main';
 let mcpAvailable = null;
 
 export function configure({ org, repo, branch } = {}) {
-  // Guard: reject values that look like URL artifacts (e.g. "https:" from bad parsing)
   const safe = /^[\w][\w.-]*$/;
+  const orgChanged = org && safe.test(org) && org !== DA_ORG;
+  const repoChanged = repo && safe.test(repo) && repo !== DA_REPO;
+  const prevOrg = DA_ORG;
+  const prevRepo = DA_REPO;
   if (org && safe.test(org)) DA_ORG = org;
   if (repo && safe.test(repo)) DA_REPO = repo;
   if (branch && safe.test(branch)) DA_BRANCH = branch;
+  if ((orgChanged || repoChanged) && prevOrg && prevRepo) clearSiteToken(prevOrg.toLowerCase(), prevRepo.toLowerCase());
 }
 
 export function getOrg() { return DA_ORG; }
@@ -121,28 +125,27 @@ export async function deletePage(path) {
 
 /* ─── Admin API — admin.hlx.page ─── */
 
-/**
- * Send a request to admin.hlx.page using the best available token.
- * Priority:
- *   1. GitHub PAT (ew-github-token) with "token" format — admin.hlx.page checks
- *      GitHub org membership, so this is the most reliable path for EDS repos.
- *   2. AEM IMS token (aem-extension-builder or darkalley) — only works if the
- *      site's admin.json explicitly allows the IMS user.
- */
+// admin.hlx.page auth for DA-backed sites requires BOTH headers simultaneously:
+//   Authorization: token {github_pat} OR Bearer {siteToken}  ← admin op auth
+//   x-content-source-authorization: Bearer {imsToken}         ← DA content read access
+// Either alone returns 401 with x-error: not authenticated to access resource: content.da.live
 async function fetchHlxAdmin(url, opts = {}) {
-  const ghToken = localStorage.getItem('ew-github-token');
-  if (ghToken) {
-    return fetch(url, {
-      ...opts,
-      headers: { Authorization: `token ${ghToken}`, ...opts.headers },
-    });
+  const pat = localStorage.getItem('ew-github-token');
+  const headers = { ...opts.headers };
+  // x-content-source-authorization must be a real user IMS token — S2S tokens are not valid here
+  const imsToken = await Promise.resolve().then(() => getUserToken()).catch(() => null);
+  if (imsToken) headers['x-content-source-authorization'] = `Bearer ${imsToken}`;
+
+  const anyToken = imsToken || getToken();
+  if (pat) {
+    headers['Authorization'] = `token ${pat}`;
+  } else if (anyToken) {
+    const siteToken = await getSiteToken(DA_ORG.toLowerCase(), DA_REPO.toLowerCase());
+    if (siteToken) {
+      headers['Authorization'] = `Bearer ${siteToken}`;
+    }
   }
-  const imsToken = getUserToken() || getToken();
-  if (!imsToken) throw new Error('Not authenticated');
-  return fetch(url, {
-    ...opts,
-    headers: { Authorization: `Bearer ${imsToken}`, ...opts.headers },
-  });
+  return fetch(url, { ...opts, credentials: 'include', headers });
 }
 
 export async function previewPage(path) {
@@ -159,14 +162,19 @@ export async function previewPage(path) {
   } catch (e) {
     console.warn('[DA] eds-preview MCP unavailable, falling back to direct:', e.message);
   }
-  // Fallback: direct admin.hlx.page call
-  const url = `https://admin.hlx.page/preview/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
-  return fetchHlxAdmin(url, { method: 'POST' });
+  // Fallback: direct admin.hlx.page call (org/repo must be lowercase)
+  const safePath = path || '/';
+  const normPath = safePath === '/' ? '/index' : safePath;
+  const url = `https://admin.hlx.page/preview/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}${normPath}`;
+  const resp = await fetchHlxAdmin(url, { method: 'POST' });
+  if (resp.ok) return resp;
+  if (resp.status === 401 || resp.status === 403) clearSiteToken(DA_ORG.toLowerCase(), DA_REPO.toLowerCase());
+  return resp;
 }
 
 export async function publishPage(path) {
   requireSite();
-  const url = `https://admin.hlx.page/live/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
+  const url = `https://admin.hlx.page/live/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}${path}`;
   return fetchHlxAdmin(url, { method: 'POST' });
 }
 
@@ -175,8 +183,9 @@ export async function publishPage(path) {
  */
 export async function getStatus(path) {
   requireSite();
-  const url = `https://admin.hlx.page/status/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
+  const url = `https://admin.hlx.page/status/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}${path}`;
   const resp = await fetchHlxAdmin(url);
+  if (resp.status === 401 || resp.status === 403) return null;
   if (!resp.ok) throw new Error(`Status check failed: ${resp.status}`);
   return resp.json();
 }
@@ -184,35 +193,35 @@ export async function getStatus(path) {
 /** Unpublish from preview (.aem.page) */
 export async function unpublishPreview(path) {
   requireSite();
-  const url = `https://admin.hlx.page/preview/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
+  const url = `https://admin.hlx.page/preview/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}${path}`;
   return fetchHlxAdmin(url, { method: 'DELETE' });
 }
 
 /** Unpublish from live (.aem.live) */
 export async function unpublishLive(path) {
   requireSite();
-  const url = `https://admin.hlx.page/live/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
+  const url = `https://admin.hlx.page/live/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}${path}`;
   return fetchHlxAdmin(url, { method: 'DELETE' });
 }
 
 /** Purge CDN cache for a path */
 export async function purgeCache(path) {
   requireSite();
-  const url = `https://admin.hlx.page/cache/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
+  const url = `https://admin.hlx.page/cache/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}${path}`;
   return fetchHlxAdmin(url, { method: 'POST' });
 }
 
 /** Sync code from GitHub to CDN */
 export async function syncCode() {
   requireSite();
-  const url = `https://admin.hlx.page/code/${DA_ORG}/${DA_REPO}/${DA_BRANCH}`;
+  const url = `https://admin.hlx.page/code/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}`;
   return fetchHlxAdmin(url, { method: 'POST' });
 }
 
 /** Bulk preview — preview all pages under a path (use "/*" for entire site) */
 export async function bulkPreview(paths) {
   requireSite();
-  const url = `https://admin.hlx.page/preview/${DA_ORG}/${DA_REPO}/${DA_BRANCH}/*`;
+  const url = `https://admin.hlx.page/preview/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}/*`;
   return fetchHlxAdmin(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -223,7 +232,7 @@ export async function bulkPreview(paths) {
 /** Bulk publish — publish all pages under a path */
 export async function bulkPublish(paths) {
   requireSite();
-  const url = `https://admin.hlx.page/live/${DA_ORG}/${DA_REPO}/${DA_BRANCH}/*`;
+  const url = `https://admin.hlx.page/live/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}/*`;
   return fetchHlxAdmin(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -233,7 +242,7 @@ export async function bulkPublish(paths) {
 
 /** Re-index a path (updates query-index) */
 export async function reindex(path) {
-  const url = `https://admin.hlx.page/index/${DA_ORG}/${DA_REPO}/${DA_BRANCH}${path}`;
+  const url = `https://admin.hlx.page/index/${DA_ORG.toLowerCase()}/${DA_REPO.toLowerCase()}/${DA_BRANCH}${path}`;
   return fetchHlxAdmin(url, { method: 'POST' });
 }
 

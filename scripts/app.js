@@ -2412,7 +2412,11 @@ async function handleRealChat(text, file) {
             ensurePageContext().catch(() => {});
           };
           da.previewPage(path)
-            .then((resp) => { if (resp.ok) reloadFrame(); else setTimeout(reloadFrame, 2000); })
+            .then((resp) => {
+              if (resp?.ok) console.debug('[preview] admin confirmed, reloading in 2s');
+              else console.warn('[preview] admin.hlx.page returned', resp?.status);
+              setTimeout(reloadFrame, 2000);
+            })
             .catch(() => setTimeout(reloadFrame, 2000));
         }
       }
@@ -3525,6 +3529,7 @@ async function enrichResourceStatus() {
   for (const page of sitePages) {
     try {
       const status = await da.getStatus(page.path);
+      if (!status) continue;
       const badge = document.querySelector(`.resource-status[data-path="${page.path}"]`);
       if (!badge) continue;
 
