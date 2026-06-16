@@ -6922,7 +6922,6 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
     const body = {
       model,
       max_tokens: 8192,
-      stream: true,
       system,
       messages,
     };
@@ -6931,12 +6930,7 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
     const resp = await fetch(CLAUDE_API, {
       method: 'POST',
       signal: abortCtrl.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
 
@@ -6945,13 +6939,14 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
       throw new Error(err.error?.message || `Claude API error: ${resp.status}`);
     }
 
-    // Parse the streamed response, collecting text and tool_use blocks
+    // Parse full JSON response from Bedrock (non-streaming InvokeModelCommand)
     console.debug(`[AI] Round ${round} API responded: ${Math.round(performance.now() - _t0)}ms`);
-    const { text, contentBlocks, stopReason } = await parseToolStream(resp, (chunk) => {
-      fullText += chunk;
-      onChunk(chunk, fullText);
-    });
-    console.debug(`[AI] Round ${round} stream complete: ${Math.round(performance.now() - _t0)}ms | stop: ${stopReason}`);
+    const data = await resp.json();
+    const contentBlocks = data.content || [];
+    const text = contentBlocks.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const stopReason = data.stop_reason || 'end_turn';
+    if (text) { fullText += text; onChunk(text, fullText); }
+    console.debug(`[AI] Round ${round} complete: ${Math.round(performance.now() - _t0)}ms | stop: ${stopReason}`);
 
     // If no tool use, we're done
     if (stopReason !== 'tool_use') break;
@@ -7046,96 +7041,3 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
   return fullText;
 }
 
-/* ── Stream Parser with Tool Use Support ── */
-/*
- * Parses a streaming SSE response from Claude, handling both
- * content_block_delta (text) and tool_use blocks.
- *
- * Returns: { text, contentBlocks, stopReason }
- * - text: accumulated text from text blocks
- * - contentBlocks: array of complete content blocks (text + tool_use)
- * - stopReason: 'end_turn' | 'tool_use' | etc.
- */
-async function parseToolStream(resp, onTextChunk) {
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let text = '';
-  let stopReason = 'end_turn';
-
-  // Track content blocks being built
-  const contentBlocks = []; // final assembled blocks
-  const blockBuilders = {}; // index → partial block data
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop();
-
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6);
-      if (data === '[DONE]') continue;
-
-      let parsed;
-      try { parsed = JSON.parse(data); } catch { continue; }
-
-      switch (parsed.type) {
-        case 'content_block_start': {
-          const idx = parsed.index;
-          const block = parsed.content_block;
-          if (block.type === 'text') {
-            blockBuilders[idx] = { type: 'text', text: '' };
-          } else if (block.type === 'tool_use') {
-            blockBuilders[idx] = { type: 'tool_use', id: block.id, name: block.name, input: '' };
-          }
-          break;
-        }
-
-        case 'content_block_delta': {
-          const idx = parsed.index;
-          const delta = parsed.delta;
-          const builder = blockBuilders[idx];
-          if (!builder) break;
-
-          if (delta.type === 'text_delta' && builder.type === 'text') {
-            builder.text += delta.text;
-            text += delta.text;
-            onTextChunk(delta.text);
-          } else if (delta.type === 'input_json_delta' && builder.type === 'tool_use') {
-            builder.input += delta.partial_json;
-          }
-          break;
-        }
-
-        case 'content_block_stop': {
-          const idx = parsed.index;
-          const builder = blockBuilders[idx];
-          if (!builder) break;
-
-          if (builder.type === 'text') {
-            contentBlocks.push({ type: 'text', text: builder.text });
-          } else if (builder.type === 'tool_use') {
-            let parsedInput = {};
-            try { parsedInput = JSON.parse(builder.input || '{}'); } catch { /* empty input */ }
-            contentBlocks.push({ type: 'tool_use', id: builder.id, name: builder.name, input: parsedInput });
-          }
-          delete blockBuilders[idx];
-          break;
-        }
-
-        case 'message_delta': {
-          if (parsed.delta?.stop_reason) {
-            stopReason = parsed.delta.stop_reason;
-          }
-          break;
-        }
-      }
-    }
-  }
-
-  return { text, contentBlocks, stopReason };
-}
