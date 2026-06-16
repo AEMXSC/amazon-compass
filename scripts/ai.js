@@ -28,6 +28,7 @@ import { checkCitationReadability, formatResultForChat, renderResultsHTML } from
 
 const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://REPLACE_WITH_LAMBDA_FUNCTION_URL';
 if (AMAZON_WORKER_BASE.includes('REPLACE_WITH')) console.error('[Amazon Compass] Lambda URL not configured. Run: localStorage.setItem("ew-amazon-worker", "<Function URL>") in DevTools.');
+const COMPASS_WORKER_BASE = localStorage.getItem('ew-ims-proxy') || 'https://compass-ims-proxy.compass-xsc.workers.dev';
 const CLAUDE_API = `${AMAZON_WORKER_BASE}/bedrock/invoke`;
 const MODEL = 'us.anthropic.claude-opus-4-6-v1';
 const STORAGE_KEY = 'ew-claude-key';
@@ -2678,7 +2679,7 @@ export async function executeTool(name, input) {
 
           // Firefly image generation and page HTML fetch run in parallel
           const [imgResult, currentHTML] = await Promise.all([
-            fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
+            fetch(`${COMPASS_WORKER_BASE}/firefly-image`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getUserToken() || getToken() || ''}` },
               body: JSON.stringify({ prompt: input.image_prompt }),
@@ -3822,7 +3823,7 @@ export async function executeTool(name, input) {
           const workerBody = { prompt: input.prompt };
           if (dims.width) workerBody.width = dims.width;
           if (dims.height) workerBody.height = dims.height;
-          const wResp = await fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
+          const wResp = await fetch(`${COMPASS_WORKER_BASE}/firefly-image`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getUserToken() || getToken() || ''}` },
             body: JSON.stringify(workerBody),
@@ -3918,7 +3919,7 @@ export async function executeTool(name, input) {
     case 'generate_image': {
       if (!(await ensureAuth())) return authRequiredError('generate_image');
       try {
-        const resp = await fetch(`${AMAZON_WORKER_BASE}/firefly-image`, {
+        const resp = await fetch(`${COMPASS_WORKER_BASE}/firefly-image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getUserToken() || getToken() || ''}` },
           body: JSON.stringify({ prompt: input.prompt }),

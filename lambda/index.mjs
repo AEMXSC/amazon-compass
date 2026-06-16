@@ -4,7 +4,6 @@ import { KendraClient, QueryCommand } from '@aws-sdk/client-kendra';
 
 const REGION = process.env.AWS_REGION || 'us-east-1';
 const KENDRA_INDEX_ID = process.env.KENDRA_INDEX_ID;
-const FIREFLY_API_KEY = process.env.FIREFLY_API_KEY;
 
 const ALLOWED_ORIGINS = [
   'https://main--amazon-compass--aemxsc.aem.page',
@@ -24,12 +23,6 @@ function getCorsHeaders(origin) {
 
 function json(statusCode, body, cors) {
   return { statusCode, headers: { 'Content-Type': 'application/json', ...cors }, body: JSON.stringify(body) };
-}
-
-function isValidJwt(token) {
-  if (!token || typeof token !== 'string') return false;
-  const parts = token.split('.');
-  return parts.length === 3 && parts.every((p) => p.length > 0);
 }
 
 function isSafeHttpsUrl(url) {
@@ -61,7 +54,6 @@ export const handler = async (event) => {
     if (path === '/bedrock/invoke') return await handleBedrock(body, cors);
     if (path === '/rekognition-analyze') return await handleRekognition(body, cors);
     if (path === '/kendra-search') return await handleKendra(body, cors);
-    if (path === '/firefly-image') return await handleFirefly(body, event.headers, cors);
     return json(404, { error: 'Not found' }, cors);
   } catch (err) {
     console.error('[compass-amazon-proxy] Unhandled error:', err);
@@ -122,33 +114,3 @@ async function handleKendra(body, cors) {
   }
 }
 
-async function handleFirefly(body, headers, cors) {
-  const { prompt, width = 1344, height = 768 } = body;
-  const authHeader = headers?.authorization || headers?.Authorization || '';
-  const imsToken = authHeader.replace(/^Bearer\s+/i, '');
-  // Basic JWT format validation — prevents empty/malformed token relay
-  if (!isValidJwt(imsToken)) return json(401, { error: 'Valid IMS Bearer token required' }, cors);
-  if (!FIREFLY_API_KEY) return json(500, { error: 'FIREFLY_API_KEY not configured' }, cors);
-  try {
-    const resp = await fetch('https://firefly-api.adobe.io/v3/images/generate', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${imsToken}`,
-        'x-api-key': FIREFLY_API_KEY,
-      },
-      body: JSON.stringify({ prompt, size: { width, height }, numVariations: 1 }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) {
-      console.error('[Firefly] API error:', resp.status, data);
-      return json(resp.status, { error: 'Firefly request failed' }, cors);
-    }
-    const imageUrl = data.outputs?.[0]?.image?.url;
-    if (!imageUrl) return json(500, { error: 'Firefly returned no image URL' }, cors);
-    return json(200, { imageUrl, provider: 'firefly' }, cors);
-  } catch (err) {
-    console.error('[Firefly] Fetch error:', err);
-    return json(502, { error: 'Firefly request failed' }, cors);
-  }
-}
