@@ -3936,17 +3936,25 @@ export async function executeTool(name, input) {
     case 'generate_image_nova': {
       const { prompt, negative_prompt = '', page_path } = input;
       try {
-        const resp = await fetch(`${AMAZON_WORKER_BASE}/nova-canvas`, {
+        const resp = await fetch(`${AMAZON_WORKER_BASE}/bedrock/invoke`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt, negativePrompt: negative_prompt }),
+          body: JSON.stringify({
+            model: 'amazon.nova-canvas-v1:0',
+            taskType: 'TEXT_IMAGE',
+            textToImageParams: { text: prompt, ...(negative_prompt ? { negativeText: negative_prompt } : {}) },
+            imageGenerationConfig: { numberOfImages: 1, width: 1280, height: 720, cfgScale: 8.0, seed: Math.floor(Math.random() * 2147483647) },
+          }),
         });
         if (!resp.ok) {
           const errBody = await resp.json().catch(() => ({}));
           return JSON.stringify({ error: errBody.error || 'Nova Canvas failed', _source: 'error' });
         }
-        const { imageBase64, model } = await resp.json();
+        const result = await resp.json();
+        const imageBase64 = result.images?.[0];
+        if (!imageBase64) return JSON.stringify({ error: result.error || 'Nova Canvas returned no image', _source: 'error' });
         const dataUrl = `data:image/png;base64,${imageBase64}`;
+        const model = 'amazon.nova-canvas-v1:0';
         if (page_path) {
           const iframe = document.querySelector('.preview-frame');
           const iDoc = iframe?.contentDocument;
