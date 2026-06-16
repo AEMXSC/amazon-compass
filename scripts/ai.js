@@ -29,8 +29,8 @@ import { checkCitationReadability, formatResultForChat, renderResultsHTML } from
 const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://cekftz2zpacs7m5kn2cvhdlm5i0lllvt.lambda-url.us-east-1.on.aws';
 if (AMAZON_WORKER_BASE.includes('REPLACE_WITH')) console.error('[Amazon Compass] Lambda URL not configured. Run: localStorage.setItem("ew-amazon-worker", "<Function URL>") in DevTools.');
 const COMPASS_WORKER_BASE = localStorage.getItem('ew-ims-proxy') || 'https://compass-ims-proxy.compass-xsc.workers.dev';
-const CLAUDE_API = `${AMAZON_WORKER_BASE}/bedrock/invoke`;
-const MODEL = 'us.anthropic.claude-opus-4-6-v1';
+const CLAUDE_API = 'https://api.anthropic.com/v1/messages';
+const MODEL = 'claude-opus-4-8';
 const STORAGE_KEY = 'ew-claude-key';
 const HTML_TRUNCATE_THRESHOLD = 15000;
 
@@ -6922,6 +6922,7 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
     const body = {
       model,
       max_tokens: 8192,
+      stream: true,
       system,
       messages,
     };
@@ -6930,7 +6931,12 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
     const resp = await fetch(CLAUDE_API, {
       method: 'POST',
       signal: abortCtrl.signal,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
       body: JSON.stringify(body),
     });
 
@@ -6939,14 +6945,12 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
       throw new Error(err.error?.message || `Claude API error: ${resp.status}`);
     }
 
-    // Parse full JSON response from Bedrock (non-streaming InvokeModelCommand)
     console.debug(`[AI] Round ${round} API responded: ${Math.round(performance.now() - _t0)}ms`);
-    const data = await resp.json();
-    const contentBlocks = data.content || [];
-    const text = contentBlocks.filter((b) => b.type === 'text').map((b) => b.text).join('');
-    const stopReason = data.stop_reason || 'end_turn';
-    if (text) { fullText += text; onChunk(text, fullText); }
-    console.debug(`[AI] Round ${round} complete: ${Math.round(performance.now() - _t0)}ms | stop: ${stopReason}`);
+    const { text, contentBlocks, stopReason } = await parseToolStream(resp, (chunk) => {
+      fullText += chunk;
+      onChunk(chunk, fullText);
+    });
+    console.debug(`[AI] Round ${round} stream complete: ${Math.round(performance.now() - _t0)}ms | stop: ${stopReason}`);
 
     // If no tool use, we're done
     if (stopReason !== 'tool_use') break;
@@ -7039,5 +7043,68 @@ export async function streamChat(userMessage, context, onChunk, onToolCall, onTo
   }
 
   return fullText;
+}
+
+async function parseToolStream(resp, onTextChunk) {
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let text = '';
+  let stopReason = 'end_turn';
+  const contentBlocks = [];
+  const blockBuilders = {};
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6);
+      if (data === '[DONE]') continue;
+      let parsed;
+      try { parsed = JSON.parse(data); } catch { continue; }
+      switch (parsed.type) {
+        case 'content_block_start': {
+          const b = parsed.content_block;
+          blockBuilders[parsed.index] = b.type === 'tool_use'
+            ? { type: 'tool_use', id: b.id, name: b.name, input: '' }
+            : { type: 'text', text: '' };
+          break;
+        }
+        case 'content_block_delta': {
+          const builder = blockBuilders[parsed.index];
+          if (!builder) break;
+          if (parsed.delta.type === 'text_delta' && builder.type === 'text') {
+            builder.text += parsed.delta.text;
+            text += parsed.delta.text;
+            onTextChunk(parsed.delta.text);
+          } else if (parsed.delta.type === 'input_json_delta' && builder.type === 'tool_use') {
+            builder.input += parsed.delta.partial_json;
+          }
+          break;
+        }
+        case 'content_block_stop': {
+          const builder = blockBuilders[parsed.index];
+          if (!builder) break;
+          if (builder.type === 'text') {
+            contentBlocks.push({ type: 'text', text: builder.text });
+          } else if (builder.type === 'tool_use') {
+            let input = {};
+            try { input = JSON.parse(builder.input || '{}'); } catch { /* empty */ }
+            contentBlocks.push({ type: 'tool_use', id: builder.id, name: builder.name, input });
+          }
+          delete blockBuilders[parsed.index];
+          break;
+        }
+        case 'message_delta':
+          if (parsed.delta?.stop_reason) stopReason = parsed.delta.stop_reason;
+          break;
+      }
+    }
+  }
+  return { text, contentBlocks, stopReason };
 }
 
