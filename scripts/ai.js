@@ -860,6 +860,22 @@ const AEM_TOOLS = [
     },
   },
 
+  /* ─── AWS Nova Canvas (Bedrock Image Generation) ─── */
+
+  {
+    name: 'generate_image_nova',
+    description: 'Generate an image using Amazon Nova Canvas (AWS Bedrock). Best for AWS-branded or cloud-themed visuals. Shows the generated image in the preview. Demo preview only — does not write to DA.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: 'Image generation prompt describing the desired visual' },
+        negative_prompt: { type: 'string', description: 'What to avoid in the generated image (optional)' },
+        page_path: { type: 'string', description: 'DA page path — if provided, the hero image in the preview will be updated (optional)' },
+      },
+      required: ['prompt'],
+    },
+  },
+
   /* ─── Firefly Agent (Generative AI for Assets) ─── */
 
   {
@@ -1887,6 +1903,7 @@ export const TOOL_AGENT_MAP = {
 
   // ── Content Optimization Agent (variations, images, renditions) ──
   create_content_variant: 'Content Optimization Agent',
+  generate_image_nova: 'Amazon Nova Canvas',
   generate_image_variations: 'Content Optimization Agent',
   edit_image_with_firefly: 'Content Optimization Agent',
   generate_image: 'Experience Production Agent',
@@ -2027,7 +2044,7 @@ const TIER2_KEYWORDS = {
   assets:       ['search_dam_assets', 'search_content_fragments', 'browse_dam_folder'],            // find/browse
   dam_metadata: ['get_asset_metadata', 'update_asset_metadata', 'get_asset_renditions', 'check_asset_expiry'], // inspect/rights
   dam_write:    ['upload_asset', 'delete_asset', 'move_asset', 'copy_asset', 'create_dam_folder', 'add_to_collection'], // mutate
-  images: ['generate_image', 'generate_and_insert_image', 'generate_image_variations', 'edit_image_with_firefly', 'transform_image', 'create_image_renditions'],
+  images: ['generate_image_nova', 'generate_image', 'generate_and_insert_image', 'generate_image_variations', 'edit_image_with_firefly', 'transform_image', 'create_image_renditions'],
   research: ['web_search'],
   journey: ['create_journey', 'generate_journey_content', 'get_journey_status', 'analyze_journey_conflicts'],
   experiment: ['setup_experiment', 'get_experiment_status', 'analyze_experiment', 'create_ab_test', 'get_personalization_offers'],
@@ -3913,6 +3930,39 @@ export async function executeTool(name, input) {
         }, null, 2);
       } catch (err) {
         return mcpError('generate_and_insert_image', err);
+      }
+    }
+
+    case 'generate_image_nova': {
+      const { prompt, negative_prompt = '', page_path } = input;
+      try {
+        const resp = await fetch(`${AMAZON_WORKER_BASE}/nova-canvas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt, negativePrompt: negative_prompt }),
+        });
+        if (!resp.ok) {
+          const errBody = await resp.json().catch(() => ({}));
+          return JSON.stringify({ error: errBody.error || 'Nova Canvas failed', _source: 'error' });
+        }
+        const { imageBase64, model } = await resp.json();
+        const dataUrl = `data:image/png;base64,${imageBase64}`;
+        if (page_path) {
+          const iframe = document.querySelector('.preview-frame');
+          const iDoc = iframe?.contentDocument;
+          if (iDoc) {
+            const img = iDoc.querySelector('.hero img, picture img, img');
+            if (img) img.src = dataUrl;
+          }
+        }
+        return JSON.stringify({
+          status: 'success', model, provider: 'Amazon Nova Canvas',
+          source: 'AWS Bedrock via Amazon Compass Lambda',
+          message: 'Image generated with Nova Canvas and shown in preview.',
+          _source: 'connected',
+        });
+      } catch (err) {
+        return JSON.stringify({ error: `Nova Canvas error: ${err.message}`, _source: 'error' });
       }
     }
 
@@ -5832,6 +5882,7 @@ These tools write to the real Document Authoring API. The user must be signed in
 
 All image generation uses **Adobe Firefly**. Call tools immediately — do not ask for provider choice.
 
+- **generate_image_nova** — AWS-native image generation via Amazon Nova Canvas (Bedrock). Use for AWS-branded or cloud/serverless-themed visuals.
 - **generate_and_insert_image** — **DEFAULT for all image requests.** Generates a Firefly image and inserts it into the DA page. Requires prompt + page_path.
 - **generate_image** — Firefly fallback that returns a URL only (no page insert). Use when page_path is unknown.
 - **generate_image_variations** — Firefly only, returns URL without inserting.

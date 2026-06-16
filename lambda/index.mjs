@@ -28,6 +28,7 @@ export const handler = async (event) => {
     if (path === '/bedrock/invoke') return await handleBedrock(body);
     if (path === '/rekognition-analyze') return await handleRekognition(body);
     if (path === '/kendra-search') return await handleKendra(body);
+    if (path === '/nova-canvas') return await handleNovaCanvas(body);
     return json(404, { error: 'Not found' });
   } catch (err) {
     console.error('[compass-amazon-proxy] error:', err);
@@ -67,6 +68,32 @@ async function handleRekognition(body) {
   } catch (err) {
     console.error('[Rekognition] error:', err);
     return json(502, { error: 'Rekognition request failed' });
+  }
+}
+
+async function handleNovaCanvas(body) {
+  const { prompt, negativePrompt = '', width = 1280, height = 720 } = body;
+  if (!prompt) return json(400, { error: 'prompt required' });
+  const payload = {
+    taskType: 'TEXT_IMAGE',
+    textToImageParams: { text: prompt, ...(negativePrompt ? { negativeText: negativePrompt } : {}) },
+    imageGenerationConfig: { numberOfImages: 1, width, height, cfgScale: 8.0, seed: Math.floor(Math.random() * 2147483647) },
+  };
+  const client = new BedrockRuntimeClient({ region: REGION });
+  try {
+    const resp = await client.send(new InvokeModelCommand({
+      modelId: 'amazon.nova-canvas-v1:0',
+      contentType: 'application/json',
+      accept: 'application/json',
+      body: JSON.stringify(payload),
+    }));
+    const result = JSON.parse(new TextDecoder().decode(resp.body));
+    const imageBase64 = result.images?.[0];
+    if (!imageBase64) return json(502, { error: 'Nova Canvas returned no image' });
+    return json(200, { imageBase64, model: 'amazon.nova-canvas-v1:0' });
+  } catch (err) {
+    console.error('[Nova Canvas] error:', err);
+    return json(502, { error: 'Nova Canvas request failed', detail: err.message });
   }
 }
 
