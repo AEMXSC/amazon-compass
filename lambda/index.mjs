@@ -5,8 +5,10 @@ import { KendraClient, QueryCommand } from '@aws-sdk/client-kendra';
 const REGION = process.env.AWS_REGION || 'us-east-1';
 const KENDRA_INDEX_ID = process.env.KENDRA_INDEX_ID;
 
+const CORS = { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' };
+
 function json(statusCode, body) {
-  return { statusCode, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+  return { statusCode, headers: CORS, body: JSON.stringify(body) };
 }
 
 function isSafeHttpsUrl(url) {
@@ -45,7 +47,7 @@ async function handleBedrock(body) {
       body: JSON.stringify(finalBody),
     }));
     const result = JSON.parse(new TextDecoder().decode(resp.body));
-    return { statusCode: 200, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(result) };
+    return { statusCode: 200, headers: CORS, body: JSON.stringify(result) };
   } catch (err) {
     console.error('[Bedrock] error:', err);
     return json(502, { error: 'Bedrock request failed', detail: err.message });
