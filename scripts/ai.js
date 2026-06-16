@@ -3935,8 +3935,12 @@ export async function executeTool(name, input) {
 
     case 'generate_image_nova': {
       const { prompt, negative_prompt = '', page_path } = input;
+      // Try Nova Canvas via Bedrock first; fall back to Gemini if the model is blocked (Legacy/inactive)
+      let imageUrl = null;
+      let provider = 'Amazon Nova Canvas';
+      let usedFallback = false;
       try {
-        const resp = await fetch(`${AMAZON_WORKER_BASE}/bedrock/invoke`, {
+        const bedrockResp = await fetch(`${AMAZON_WORKER_BASE}/bedrock/invoke`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3946,31 +3950,52 @@ export async function executeTool(name, input) {
             imageGenerationConfig: { numberOfImages: 1, width: 1280, height: 720, cfgScale: 8.0, seed: Math.floor(Math.random() * 2147483647) },
           }),
         });
-        if (!resp.ok) {
-          const errBody = await resp.json().catch(() => ({}));
-          return JSON.stringify({ error: errBody.error || 'Nova Canvas failed', _source: 'error' });
+        if (bedrockResp.ok) {
+          const result = await bedrockResp.json();
+          const imageBase64 = result.images?.[0];
+          if (imageBase64) {
+            const dataUrl = `data:image/png;base64,${imageBase64}`;
+            if (page_path) {
+              const iframe = document.querySelector('.preview-frame');
+              const iDoc = iframe?.contentDocument;
+              if (iDoc) {
+                const img = iDoc.querySelector('.hero img, picture img, img');
+                if (img) img.src = dataUrl;
+              }
+            }
+            return JSON.stringify({ status: 'success', model: 'amazon.nova-canvas-v1:0', provider, source: 'AWS Bedrock', message: 'Image generated with Nova Canvas.', _source: 'connected' });
+          }
         }
-        const result = await resp.json();
-        const imageBase64 = result.images?.[0];
-        if (!imageBase64) return JSON.stringify({ error: result.error || 'Nova Canvas returned no image', _source: 'error' });
-        const dataUrl = `data:image/png;base64,${imageBase64}`;
-        const model = 'amazon.nova-canvas-v1:0';
+        usedFallback = true;
+      } catch (_) {
+        usedFallback = true;
+      }
+      // Gemini fallback (Nova Canvas blocked — Legacy model, 30-day inactivity restriction)
+      try {
+        const geminiResp = await fetch(`${COMPASS_WORKER_BASE}/gemini-image`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getUserToken() || getToken() || ''}` },
+          body: JSON.stringify({ prompt }),
+        });
+        if (!geminiResp.ok) {
+          const e = await geminiResp.json().catch(() => ({}));
+          return JSON.stringify({ error: e.error || 'Image generation failed (Nova Canvas blocked, Gemini fallback also failed)', _source: 'error' });
+        }
+        const geminiResult = await geminiResp.json();
+        imageUrl = geminiResult.imageUrl;
+        if (!imageUrl) return JSON.stringify({ error: 'No image URL returned', _source: 'error' });
+        provider = 'Gemini (Nova Canvas activating)';
         if (page_path) {
           const iframe = document.querySelector('.preview-frame');
           const iDoc = iframe?.contentDocument;
           if (iDoc) {
             const img = iDoc.querySelector('.hero img, picture img, img');
-            if (img) img.src = dataUrl;
+            if (img) img.src = imageUrl;
           }
         }
-        return JSON.stringify({
-          status: 'success', model, provider: 'Amazon Nova Canvas',
-          source: 'AWS Bedrock via Amazon Compass Lambda',
-          message: 'Image generated with Nova Canvas and shown in preview.',
-          _source: 'connected',
-        });
+        return JSON.stringify({ status: 'success', model: geminiResult.model, provider, source: 'Gemini fallback — Nova Canvas access restoring', image_url: imageUrl, message: 'Image generated and shown in preview.', _source: 'connected' });
       } catch (err) {
-        return JSON.stringify({ error: `Nova Canvas error: ${err.message}`, _source: 'error' });
+        return JSON.stringify({ error: `Image generation error: ${err.message}`, _source: 'error' });
       }
     }
 
