@@ -3970,21 +3970,21 @@ export async function executeTool(name, input) {
       } catch (_) {
         usedFallback = true;
       }
-      // Gemini fallback (Nova Canvas blocked — Legacy model, 30-day inactivity restriction)
+      // Firefly fallback (Nova Canvas blocked — Legacy model, 30-day inactivity restriction)
       try {
-        const geminiResp = await fetch(`${COMPASS_WORKER_BASE}/gemini-image`, {
+        const fireflyResp = await fetch(`${COMPASS_WORKER_BASE}/firefly-image`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getUserToken() || getToken() || ''}` },
           body: JSON.stringify({ prompt }),
         });
-        if (!geminiResp.ok) {
-          const e = await geminiResp.json().catch(() => ({}));
-          return JSON.stringify({ error: e.error || 'Image generation failed (Nova Canvas blocked, Gemini fallback also failed)', _source: 'error' });
+        if (!fireflyResp.ok) {
+          const e = await fireflyResp.json().catch(() => ({}));
+          return JSON.stringify({ error: e.error || 'Image generation failed (Nova Canvas blocked, Firefly fallback also failed)', _source: 'error' });
         }
-        const geminiResult = await geminiResp.json();
-        imageUrl = geminiResult.imageUrl;
+        const fireflyResult = await fireflyResp.json();
+        imageUrl = fireflyResult.imageUrl;
         if (!imageUrl) return JSON.stringify({ error: 'No image URL returned', _source: 'error' });
-        provider = 'Gemini (Nova Canvas activating)';
+        provider = 'Adobe Firefly (Nova Canvas activating)';
         if (page_path) {
           const iframe = document.querySelector('.preview-frame');
           const iDoc = iframe?.contentDocument;
@@ -3993,7 +3993,7 @@ export async function executeTool(name, input) {
             if (img) img.src = imageUrl;
           }
         }
-        return JSON.stringify({ status: 'success', model: geminiResult.model, provider, source: 'Gemini fallback — Nova Canvas access restoring', image_url: imageUrl, message: 'Image generated and shown in preview.', _source: 'connected' });
+        return JSON.stringify({ status: 'success', model: fireflyResult.model, provider, source: 'Adobe Firefly fallback — Nova Canvas access restoring', image_url: imageUrl, message: 'Image generated and shown in preview.', _source: 'connected' });
       } catch (err) {
         return JSON.stringify({ error: `Image generation error: ${err.message}`, _source: 'error' });
       }
