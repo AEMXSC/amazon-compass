@@ -26,7 +26,7 @@ import { buildPlaybookPrompt } from './xsc-playbook.js';
 import { buildKnowledgePrompt } from './aem-knowledge.js';
 import { checkCitationReadability, formatResultForChat, renderResultsHTML } from './llmo-checker.js';
 
-const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://REPLACE_WITH_LAMBDA_FUNCTION_URL';
+const AMAZON_WORKER_BASE = localStorage.getItem('ew-amazon-worker') || 'https://cekftz2zpacs7m5kn2cvhdlm5i0lllvt.lambda-url.us-east-1.on.aws';
 if (AMAZON_WORKER_BASE.includes('REPLACE_WITH')) console.error('[Amazon Compass] Lambda URL not configured. Run: localStorage.setItem("ew-amazon-worker", "<Function URL>") in DevTools.');
 const COMPASS_WORKER_BASE = localStorage.getItem('ew-ims-proxy') || 'https://compass-ims-proxy.compass-xsc.workers.dev';
 const CLAUDE_API = `${AMAZON_WORKER_BASE}/bedrock/invoke`;
