@@ -108,7 +108,7 @@ export function createMcpClient(endpointPath, label = 'MCP', options = {}) {
     } else if (options.preferUserToken) {
       // Firefly: prefer user's IMS token (carries personal 3P model entitlements)
       // Fall back to S2S only when user is not signed in
-      token = userToken || localStorage.getItem('ew-mcp-token') || s2sToken;
+      token = getUserToken() || localStorage.getItem('ew-mcp-token') || s2sToken;
     } else {
       const productToken = options.tokenKey ? localStorage.getItem(options.tokenKey) : null;
       const mcpToken = productToken || localStorage.getItem('ew-mcp-token');
@@ -352,7 +352,7 @@ export const contentUpdaterMcp = createMcpClient('/adobe/mcp/content-updater', '
 export const aemUnifiedMcp = createMcpClient('/adobe/mcp/aem', 'AEM-Unified', IMS);
 
 // ── AEM Governance & Discovery ──
-export const governanceMcp = createMcpClient('/adobe/mcp/experience-governance', 'AEM-Governance', IMS);
+export const governanceMcp = createMcpClient('/adobe/mcp/experience-governance', 'AEM-Governance', { userOnly: true });
 export const discoveryMcp = createMcpClient('/adobe/mcp/discovery', 'AEM-Discovery', IMS);
 
 // ── AEM Development ──
@@ -364,8 +364,8 @@ export const odinMcp = createMcpClient('/adobe/mcp/odin/prod', 'AEM-Odin', IMS);
 // ── Experience Production Agent (DA content authoring via MCP) ──
 export const experienceProductionMcp = createMcpClient('/adobe/mcp/experience-production', 'Experience-Production', IMS);
 
-// ── Firefly (Image Generation) — IMS token now includes firefly_api scope via IMS_SCOPE in ims.js ──
-export const fireflyMcp = createMcpClient('/adobe/mcp/loki/firefly', 'Firefly', IMS);
+// ── Firefly (Image Generation) — user IMS token preferred (carries firefly_api entitlements) ──
+export const fireflyMcp = createMcpClient('/adobe/mcp/loki/firefly', 'Firefly', { preferUserToken: true });
 
 // ── Adobe Journey Optimizer ──
 export const ajoMcp = createMcpClient('/adobe/mcp/loki/ajo', 'AJO', IMS);
