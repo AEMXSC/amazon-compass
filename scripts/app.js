@@ -23,6 +23,7 @@ import { detectSiteMention, resolveSite } from './known-sites.js';
 import { getGitHubToken, setGitHubToken, hasGitHubToken, getRepoInfo, listBranches, getRepoTree } from './github-content.js';
 import { detectAndCacheSiteType, getSiteType } from './site-detect.js';
 import { aemUnifiedMcp, contentMcp, daMcp, prewarmSessions, registerMcpTools } from './mcp-client.js';
+import { initMcpManager } from './mcp-manager.js';
 
 /* ── Dynamic Org Configuration (from customer profile) ── */
 let AEM_ORG = getOrgConfig();
@@ -7014,6 +7015,7 @@ async function init() {
   buildOrgSelector();
   initProfileGenerator();
 
+  initMcpManager();
   console.log('[Compass] init v158');
 
   // Detect MCP token delivered via URL hash by the connect-aem helper script
