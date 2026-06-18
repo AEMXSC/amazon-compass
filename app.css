@@ -198,6 +198,15 @@ textarea:focus-visible,
   height: 20px;
 }
 
+#mcpManagerBtn {
+  color: var(--accent-light);
+}
+
+#mcpManagerBtn:hover {
+  color: var(--accent-light);
+  background: var(--accent-dim);
+}
+
 /* ─── Main ─── */
 .main {
   display: flex;
