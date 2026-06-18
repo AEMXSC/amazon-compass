@@ -163,6 +163,10 @@ function actionButton(mcp, status) {
     return `<span class="mcp-tag mcp-tag-auto">Auto</span>`;
   }
   if (status === 'ready') {
+    if (mcp.authType === 'user-ims') {
+      // Token managed by IMS sign-in — sign out via the header menu, not per-server
+      return `<span class="mcp-tag mcp-tag-auto">Via IMS</span>`;
+    }
     return `<button class="mcp-btn mcp-btn-disconnect" data-mcp-disconnect="${mcp.id}" data-auth="${mcp.authType}" data-key="${mcp.tokenKey || ''}" title="Disconnect">Disconnect</button>`;
   }
   return `<button class="mcp-btn mcp-btn-connect" data-mcp-connect="${mcp.id}" data-auth="${mcp.authType}" data-key="${mcp.tokenKey || ''}">Connect</button>`;
@@ -323,7 +327,10 @@ async function saveCustomServer() {
     clearTimeout(timeoutId);
     if (!resp.ok && resp.status !== 401) throw new Error(`Server returned ${resp.status}`);
   } catch (err) {
-    document.getElementById('customMcpError').textContent = `Connection failed: ${err.message}`;
+    console.warn('[MCP] Custom server connection test failed:', err);
+    document.getElementById('customMcpError').textContent = err.name === 'AbortError'
+      ? 'Connection timed out — check the URL and try again.'
+      : 'Could not reach the server. Check the URL and any firewall or CORS settings.';
     saveBtn.textContent = 'Connect & Test';
     saveBtn.disabled = false;
     return;

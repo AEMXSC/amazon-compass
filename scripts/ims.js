@@ -18,20 +18,26 @@
 const IMS_LIB_URL = 'https://auth.services.adobe.com/imslib/imslib.min.js';
 const IMS_CLIENT_ID = 'aem-extension-builder';
 const IMS_SCOPE = 'AdobeID,openid,read_organizations,additional_info.projectedProductContext';
-const IMS_REDIRECT_URI = (() => {
-  const { origin } = window.location;
-  const knownOrigins = [
-    'https://compass.aemxsc.com',
-    'https://eds-migration--compass--aemxsc.aem.page',
-    'https://main--compass--aemxsc.aem.page',
-    'https://main--compass--aemxsc.aem.live',
-    'https://main--amazon-compass--aemxsc.aem.page',
-    'https://main--amazon-compass--aemxsc.aem.live',
-    'http://localhost:3000',
-    'http://localhost:3001',
-  ];
-  return knownOrigins.includes(origin) ? `${origin}/` : `${origin}/`;
-})();
+const KNOWN_ORIGINS = [
+  'https://compass.aemxsc.com',
+  'https://eds-migration--compass--aemxsc.aem.page',
+  'https://main--compass--aemxsc.aem.page',
+  'https://main--compass--aemxsc.aem.live',
+  'https://main--amazon-compass--aemxsc.aem.page',
+  'https://main--amazon-compass--aemxsc.aem.live',
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
+const IMS_REDIRECT_URI = KNOWN_ORIGINS.includes(window.location.origin)
+  ? `${window.location.origin}/`
+  : 'https://eds-migration--compass--aemxsc.aem.page/';
+
+// Safari <16.4 does not support AbortSignal.timeout() — use this helper instead
+function timeoutSignal(ms) {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), ms);
+  return controller.signal;
+}
 // Clear legacy proxy URL so both ims.js and mcp-client.js fall back to the current worker
 try {
   const _stored = localStorage.getItem('ew-ims-proxy');
@@ -194,52 +200,118 @@ export async function signIn() {
 
 const MCP_LOCAL_SERVER = 'http://localhost';
 
+// ── PKCE helpers (browser-native SubtleCrypto) ────────────────────────────
+
+function generateCodeVerifier() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return btoa(String.fromCharCode(...arr)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+async function generateCodeChallenge(verifier) {
+  const data = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
 /**
- * MCP OAuth — get a write-capable token for Content MCP.
+ * MCP OAuth — acquire an AEM Cloud write-capable token.
  *
- * Delegates to the local aem-connect-server (same pattern Claude Code uses):
- *   1. Compass fetches http://localhost/token
- *   2. If server has a valid token → returns it immediately
- *   3. If not → server opens the OAuth browser flow, Compass polls until token arrives
+ * Primary: popup → Worker /mcp-oauth/start → oauth.adobeaemcloud.com
+ *          → Worker /mcp-oauth/callback (postMessage code back)
+ *          → POST Worker /mcp-oauth/token (exchanges code, has client_secret)
  *
- * Chrome allows HTTPS pages to fetch http://localhost (localhost is a trusted origin,
- * exempt from mixed-content blocking per the W3C spec).
- *
- * Requires aem-connect-server.mjs running on the user's machine.
- * Setup: run scripts/start-aem-connect.bat once (handles netsh permissions).
+ * Legacy fast-path: if aem-connect-server.mjs is still running at http://localhost,
+ * use it directly (no popup) — backwards compatible for devs who kept the old setup.
  */
 export async function signInMcpOAuth() {
-  // 1. Check if local server is up
-  let serverStatus;
+  // Legacy fast-path — local server running
   try {
-    const resp = await fetch(`${MCP_LOCAL_SERVER}/status`, { signal: AbortSignal.timeout(2000) });
-    serverStatus = await resp.json();
-  } catch {
-    console.warn('[MCP-OAuth] Local server not running — falling back to manual flow');
-    return signInMcpOAuthManual();
-  }
+    const resp = await fetch(`${MCP_LOCAL_SERVER}/status`, { signal: timeoutSignal(800) });
+    if (resp.ok) return signInMcpOAuthLocal();
+  } catch { /* not running — use popup */ }
 
-  // 2. Server is up — request token (triggers OAuth if expired)
+  return signInMcpOAuthPopup();
+}
+
+async function signInMcpOAuthLocal() {
   try {
-    const resp = await fetch(`${MCP_LOCAL_SERVER}/token`, { signal: AbortSignal.timeout(5000) });
+    const resp = await fetch(`${MCP_LOCAL_SERVER}/token`, { signal: timeoutSignal(5000) });
     const data = await resp.json();
-
     if (data.access_token) {
-      // Server already had a valid token
       localStorage.setItem('ew-mcp-token', data.access_token);
       console.log('[MCP-OAuth] Token from local server');
       return data.access_token;
     }
-
-    if (data.status === 'auth_required') {
-      // Server opened the browser — poll until the user completes auth
-      console.log('[MCP-OAuth] Auth flow started, polling...');
-      return pollLocalServerForToken();
-    }
-  } catch {
-    return signInMcpOAuthManual();
-  }
+    if (data.status === 'auth_required') return pollLocalServerForToken();
+  } catch { /* */ }
   return null;
+}
+
+async function signInMcpOAuthPopup() {
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = await generateCodeChallenge(codeVerifier);
+  const state = crypto.randomUUID();
+
+  const startUrl = `${IMS_WORKER}/mcp-oauth/start?${new URLSearchParams({ code_challenge: codeChallenge, state })}`;
+  const popup = window.open(startUrl, 'mcp-oauth', 'width=520,height=700,menubar=no,toolbar=no,location=no,status=no');
+
+  if (!popup) {
+    // Popup blocked — fall back to the "start local server" toast
+    window.dispatchEvent(new CustomEvent('ew-mcp-server-missing'));
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    const workerOrigin = new URL(IMS_WORKER).origin;
+
+    // Timeout after 2 minutes
+    const tid = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      if (!popup.closed) popup.close();
+      console.warn('[MCP-OAuth] Popup auth timed out');
+      resolve(null);
+    }, 120_000);
+
+    function handler(event) {
+      // Only accept postMessage from our Worker callback page
+      if (event.origin !== workerOrigin || event.data?.type !== 'mcp-oauth-callback') return;
+
+      clearTimeout(tid);
+      window.removeEventListener('message', handler);
+
+      const { code, error } = event.data;
+      if (error || !code) {
+        console.warn('[MCP-OAuth] Popup returned error:', error);
+        resolve(null);
+        return;
+      }
+
+      // Exchange code → token via Worker (client_secret stays server-side)
+      fetch(`${IMS_WORKER}/mcp-oauth/token`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, codeVerifier }),
+      })
+        .then((r) => r.json())
+        .then((tokenData) => {
+          if (tokenData.access_token) {
+            localStorage.setItem('ew-mcp-token', tokenData.access_token);
+            console.log('[MCP-OAuth] Token acquired via popup');
+            resolve(tokenData.access_token);
+          } else {
+            console.warn('[MCP-OAuth] Token exchange failed:', tokenData);
+            resolve(null);
+          }
+        })
+        .catch((err) => {
+          console.warn('[MCP-OAuth] Token exchange error:', err.message);
+          resolve(null);
+        });
+    }
+
+    window.addEventListener('message', handler);
+  });
 }
 
 async function pollLocalServerForToken(maxWaitMs = 180_000) {
@@ -247,7 +319,7 @@ async function pollLocalServerForToken(maxWaitMs = 180_000) {
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 1500));
     try {
-      const resp = await fetch(`${MCP_LOCAL_SERVER}/token`, { signal: AbortSignal.timeout(3000) });
+      const resp = await fetch(`${MCP_LOCAL_SERVER}/token`, { signal: timeoutSignal(3000) });
       const data = await resp.json();
       if (data.access_token) {
         localStorage.setItem('ew-mcp-token', data.access_token);
@@ -256,15 +328,6 @@ async function pollLocalServerForToken(maxWaitMs = 180_000) {
       }
     } catch { /* keep polling */ }
   }
-  return null;
-}
-
-/**
- * Fallback: instruct user to start the local server.
- * Opens instructions in a toast rather than silently failing.
- */
-async function signInMcpOAuthManual() {
-  window.dispatchEvent(new CustomEvent('ew-mcp-server-missing'));
   return null;
 }
 
