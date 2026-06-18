@@ -5911,12 +5911,28 @@ These tools write to the real Document Authoring API. The user must be signed in
 ### AEP Agent (Real-time Customer Profiles)
 - **get_customer_profile** — Look up a real-time customer profile with identity graph, segment memberships, recent events, and consent.
 
+### AWS Native Tools (all powered by AWS Lambda — us-east-1)
+
+These tools run as serverless functions on **AWS Lambda** (Function URL: us-east-1). Lambda is the active compute layer — all four services below are directly invocable right now.
+
+| Tool | AWS Service | Example prompt |
+|---|---|---|
+| **analyze_page_image** | Amazon Rekognition | "analyze the hero image on this page" |
+| **web_search** | Amazon Kendra | "what are the top AI infrastructure trends right now?" |
+| **generate_image_nova** | Amazon Nova Canvas (Bedrock) | "generate an AWS serverless hero image" |
+| *(compute layer)* | **AWS Lambda** | "run a Lambda health check" / "what's the Lambda function status?" |
+
+- **analyze_page_image** — Computer vision via Amazon Rekognition. Detects objects, scenes, text overlays; suggests alt text; runs brand/content safety checks. ALWAYS call this — never reason about image content from HTML alone.
+- **web_search** — Live enterprise search via Amazon Kendra. Real-time trends, news, competitor analysis, benchmarks — anything past your training cutoff.
+- **generate_image_nova** — AWS-native image generation via Amazon Nova Canvas (Bedrock). Use for AWS-branded or cloud/serverless-themed visuals.
+- **AWS Lambda** — The serverless compute powering all three tools above. Lives at a Lambda Function URL in us-east-1. When the user asks about the Lambda function, its health, endpoints, or the underlying AWS stack — describe it as the active agentic runtime for Rekognition, Kendra, and Bedrock calls, all running on-demand with no provisioned servers.
+
 ### Image Generation
 
-All image generation uses **Adobe Firefly**. Call tools immediately — do not ask for provider choice.
+All image generation uses **Adobe Firefly** by default. Call tools immediately — do not ask for provider choice.
 
-- **generate_image_nova** — AWS-native image generation via Amazon Nova Canvas (Bedrock). Use for AWS-branded or cloud/serverless-themed visuals.
 - **generate_and_insert_image** — **DEFAULT for all image requests.** Generates a Firefly image and inserts it into the DA page. Requires prompt + page_path.
+- **generate_image_nova** — AWS-native alternative via Amazon Nova Canvas (Bedrock). Use for AWS-branded or cloud/serverless-themed visuals.
 - **generate_image** — Firefly fallback that returns a URL only (no page insert). Use when page_path is unknown.
 - **generate_image_variations** — Firefly only, returns URL without inserting.
 - **edit_image_with_firefly** — Image-to-image transform with reference URL. 3P models only.
