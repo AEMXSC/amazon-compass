@@ -285,6 +285,9 @@ export async function signIn() {
   }
 }
 
+/* ─── Site token prefix — declared here so signOut() can reference it ─── */
+const SITE_TOKEN_PREFIX = 'ew-hlx-site-token';
+
 /* ─── Sign out ─── */
 
 export function signOut() {
@@ -295,6 +298,9 @@ export function signOut() {
   localStorage.removeItem('ew-ims');
   localStorage.removeItem(EXPIRY_KEY);
   localStorage.removeItem(PROFILE_STORAGE_KEY);
+  for (const key of Object.keys(localStorage)) {
+    if (key.startsWith(SITE_TOKEN_PREFIX)) localStorage.removeItem(key);
+  }
   profile = null;
   authMethod = 'none';
   window.dispatchEvent(new CustomEvent('ew-auth-change', { detail: { signedIn: false } }));
@@ -452,4 +458,48 @@ export async function fetchWithToken(url, opts = {}) {
     ...opts,
     headers: { Authorization: `Bearer ${token}`, ...opts.headers },
   });
+}
+
+/* ─── Helix site token exchange ─── */
+// SITE_TOKEN_PREFIX declared earlier so signOut() can reference it.
+
+function siteTokenKey(org, repo) {
+  return `${SITE_TOKEN_PREFIX}-${org}-${repo}`;
+}
+
+export async function getSiteToken(org, repo) {
+  if (!org || !repo) return null;
+  const cached = localStorage.getItem(siteTokenKey(org, repo));
+  if (cached && cached.length > 20) return cached;
+  const imsToken = getUserToken() || getToken();
+  if (!imsToken) return null;
+  try {
+    const resp = await fetch(`https://admin.hlx.page/auth/${org}/${repo}`, {
+      headers: { Authorization: `Bearer ${imsToken}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) {
+      console.warn(`[IMS] Site token exchange failed: ${resp.status} for ${org}/${repo}`);
+      return null;
+    }
+    const ct = resp.headers.get('content-type') || '';
+    if (!ct.includes('application/json')) {
+      console.warn(`[IMS] Site token exchange: unexpected content-type "${ct}" for ${org}/${repo}`);
+      return null;
+    }
+    const data = await resp.json();
+    const token = data.token || data.access_token || null;
+    if (token) {
+      localStorage.setItem(siteTokenKey(org, repo), token);
+      console.log(`[IMS] Site token acquired for ${org}/${repo}`);
+    }
+    return token;
+  } catch (e) {
+    console.warn('[IMS] Site token exchange error:', e.message);
+    return null;
+  }
+}
+
+export function clearSiteToken(org, repo) {
+  if (org && repo) localStorage.removeItem(siteTokenKey(org, repo));
 }
