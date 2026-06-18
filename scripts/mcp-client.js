@@ -234,12 +234,12 @@ export function createMcpClient(endpointPath, label = 'MCP', options = {}) {
           protocolVersion: MCP_PROTOCOL_VERSION,
           capabilities: {},
           clientInfo: { name: 'experience-workspace', version: '1.0.0' },
-        });
+        }, { _isRetry: true });
         console.debug(`[${label}] Session initialized:`, initResult?.serverInfo?.name || 'unknown');
 
         await mcpRequest('notifications/initialized', {}, { isNotification: true });
 
-        const toolsResult = await mcpRequest('tools/list', {});
+        const toolsResult = await mcpRequest('tools/list', {}, { _isRetry: true });
         if (toolsResult?.tools) {
           toolSchemas = {};
           for (const tool of toolsResult.tools) {
