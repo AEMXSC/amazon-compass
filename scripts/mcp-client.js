@@ -157,6 +157,17 @@ export function createMcpClient(endpointPath, label = 'MCP', options = {}) {
           try { await initSession(); } catch (e) { console.warn(`[${label}] Re-init failed after 401:`, e.message); }
           return mcpRequest(method, params, { isNotification, _isRetry: true });
         }
+        if (options.preferUserToken) {
+          // Firefly: session expiry is the likely cause — attempt OAuth for fresh scoped token,
+          // then re-init with user IMS regardless (OAuth unavailable without local server)
+          try {
+            const fresh = await signInMcpOAuth();
+            if (fresh) localStorage.setItem('ew-mcp-token', fresh);
+            else localStorage.removeItem('ew-mcp-token'); // stale token — clear so initSession uses user IMS
+          } catch { localStorage.removeItem('ew-mcp-token'); /* OAuth unavailable — clear stale token, fall back to user IMS */ }
+          try { await initSession(); } catch (e) { console.warn(`[${label}] Re-init failed after 401:`, e.message); }
+          return mcpRequest(method, params, { isNotification, _isRetry: true });
+        }
         if (options.tokenKey) {
           // Product-specific token is stale — clear it, re-init with fallback token
           localStorage.removeItem(options.tokenKey);
