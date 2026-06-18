@@ -147,27 +147,33 @@ export function createMcpClient(endpointPath, label = 'MCP', options = {}) {
     if (isNotification) return null;
 
     if (!resp.ok) {
-      // 401 with a stale/malformed MCP OAuth token — re-auth, retry once.
-      // Only remove the token AFTER a successful refresh (avoids clearing it for
-      // parallel prewarm clients that haven't sent their request yet).
+      // 401 — session or token is stale. Reset + re-init session, then retry once.
+      // Re-running initSession() is critical: the server-side MCP session may have
+      // expired, and retrying without a fresh initialize handshake will also fail.
       if (resp.status === 401 && !_isRetry) {
-        if (options.tokenKey) {
-          // Product-specific token is stale — clear token + session, retry with IMS token
-          localStorage.removeItem(options.tokenKey);
-          resetSession();
+        resetSession(); // always clear stale session first
+        if (options.userOnly) {
+          // Governance/SpaceCat: user IMS token only — no OAuth dance, just re-init
+          try { await initSession(); } catch (e) { console.warn(`[${label}] Re-init failed after 401:`, e.message); }
           return mcpRequest(method, params, { isNotification, _isRetry: true });
-        } else {
-          try {
-            const fresh = await signInMcpOAuth();
-            if (fresh) {
-              localStorage.setItem('ew-mcp-token', fresh);
-              resetSession();
-              return mcpRequest(method, params, { isNotification, _isRetry: true });
-            }
-          } catch { /* fall through to error below */ }
-          localStorage.removeItem('ew-mcp-token');
-          resetSession();
         }
+        if (options.tokenKey) {
+          // Product-specific token is stale — clear it, re-init with fallback token
+          localStorage.removeItem(options.tokenKey);
+          try { await initSession(); } catch (e) { console.warn(`[${label}] Re-init failed after 401:`, e.message); }
+          return mcpRequest(method, params, { isNotification, _isRetry: true });
+        }
+        // Default: try MCP OAuth refresh, then re-init
+        try {
+          const fresh = await signInMcpOAuth();
+          if (fresh) {
+            localStorage.setItem('ew-mcp-token', fresh);
+            try { await initSession(); } catch (e) { console.warn(`[${label}] Re-init failed after 401:`, e.message); }
+            return mcpRequest(method, params, { isNotification, _isRetry: true });
+          }
+        } catch { /* fall through to error below */ }
+        localStorage.removeItem('ew-mcp-token');
+        // No valid token path — fall through to error
       }
       const errorText = await resp.text().catch(() => '');
       throw new Error(`[${label}] MCP error ${resp.status}: ${errorText.slice(0, 300)}`);
