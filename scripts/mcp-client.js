@@ -410,8 +410,8 @@ export const sitesOptimizerMcp = createMcpClient('https://m-mcp-demo.adobe.io/mc
 // ── Workfront — uses apiKey header auth (injected by worker), not IMS Bearer ──
 export const workfrontMcp = createMcpClient('https://mcp.workfront.adobe.com/mcp/v1', 'Workfront');
 
-// ── Semrush (SEO research — apiKey auth injected by worker) ──
-export const semrushMcp = createMcpClient('https://mcp.semrush.com/v1/mcp', 'Semrush');
+// ── Semrush (SEO research — OAuth token stored in ew-semrush-token) ──
+export const semrushMcp = createMcpClient('https://mcp.semrush.com/v1/mcp', 'Semrush', { tokenKey: 'ew-semrush-token' });
 
 /**
  * MCP Tool Registry — maps tool names to their client instance.
