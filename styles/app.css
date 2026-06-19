@@ -130,7 +130,7 @@ textarea:focus-visible,
 .workspace {
   display: grid !important;
   grid-template-columns: var(--sidebar-width) 1fr !important;
-  grid-template-rows: none !important;
+  grid-template-rows: 1fr !important;
   height: 100vh !important;
   width: 100% !important;
   max-width: none !important;
@@ -141,7 +141,6 @@ textarea:focus-visible,
 
 /* ─── Sidebar ─── */
 .sidebar {
-  grid-column: 1;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -211,7 +210,6 @@ textarea:focus-visible,
 
 /* ─── Main ─── */
 .main {
-  grid-column: 2 / -1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -3114,10 +3112,6 @@ textarea:focus-visible,
 
   .sidebar {
     display: none !important;
-  }
-
-  .main {
-    grid-column: 1;
   }
 
   .chat-area {
