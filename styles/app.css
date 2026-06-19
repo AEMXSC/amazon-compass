@@ -5561,6 +5561,13 @@ pre:hover .code-copy-btn {
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
 }
 
+@media (max-width: 600px) {
+  .mcp-panel {
+    left: 0;
+    width: 100vw;
+  }
+}
+
 .mcp-panel.visible {
   transform: translateX(0);
 }
@@ -5868,17 +5875,23 @@ pre:hover .code-copy-btn {
 /* ─── Add Custom MCP Modal ───────────────────────────────────────────────── */
 
 .mcp-custom-modal {
-  display: none;
+  display: flex;
   position: fixed;
   inset: 0;
-  z-index: 300;
+  z-index: 2100;
   background: rgba(0, 0, 0, 0.55);
   align-items: center;
   justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease, visibility 0.18s ease;
 }
 
 .mcp-custom-modal.visible {
-  display: flex;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
 }
 
 .mcp-custom-content {
