@@ -36,7 +36,7 @@ const MCP_CATALOG = [
   { id: 'cloudmanager', name: 'Cloud Manager', category: 'AEM & Content', authType: 'ims', description: 'Pipeline and environment management for AEM Cloud' },
 
   // ── Governance & Discovery ─────────────────────────────────────────────────
-  { id: 'experience-governance', name: 'Experience Governance', category: 'Governance & Discovery', authType: 'mcp-oauth', description: 'Brand compliance — evaluate text, images, and pages against brand rules (17 tools)', badge: '17 tools' },
+  { id: 'experience-governance', name: 'Experience Governance', category: 'Governance & Discovery', authType: 'user-ims', description: 'Brand compliance — evaluate text, images, and pages against brand rules (17 tools)', badge: '17 tools' },
   { id: 'discovery', name: 'AEM Discovery', category: 'Governance & Discovery', authType: 'ims', description: 'Discover AEM sites, pages, and content structure' },
   { id: 'sites-optimizer', name: 'Sites Optimizer', category: 'Governance & Discovery', authType: 'user-ims', description: 'LLM-powered site optimization and content recommendations' },
 
