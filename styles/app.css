@@ -197,10 +197,16 @@ textarea:focus-visible,
 .sidebar-btn svg {
   width: 20px;
   height: 20px;
+  stroke: var(--text-secondary);
+  fill: none;
 }
 
 #mcpManagerBtn {
   color: var(--accent-light);
+}
+
+#mcpManagerBtn svg {
+  stroke: var(--accent-light);
 }
 
 #mcpManagerBtn:hover {
