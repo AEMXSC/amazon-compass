@@ -60,7 +60,7 @@ body > main > .section > div {
   --bg-primary: #161d26;       /* colorBackgroundLayoutMain */
   --bg-secondary: #1b232d;     /* colorBackgroundDropdownItemDefault */
   --bg-card: #161d26;          /* colorBackgroundContainerContent */
-  --bg-card-hover: #1b232d;
+  --bg-card-hover: #20293a;
   --bg-input: #161d26;         /* colorBackgroundInputDefault */
   --bg-sidebar: #0f141a;       /* colorBackgroundHomeHeader */
   --bg-header: #131921;        /* amazon.com dark navy */
