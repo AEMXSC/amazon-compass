@@ -167,7 +167,7 @@ textarea:focus-visible,
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
   position: relative;
@@ -4222,7 +4222,7 @@ textarea:focus-visible,
 }
 
 .home-card {
-  background: var(--bg-card);
+  background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
