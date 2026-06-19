@@ -370,7 +370,7 @@ export const aemUnifiedMcp = createMcpClient('/adobe/mcp/aem', 'AEM-Unified', IM
 export const cloudManagerMcp = createMcpClient('/adobe/mcp/cloudmanager', 'AEM-CloudManager', IMS);
 
 // ── AEM Governance & Discovery ──
-export const governanceMcp = createMcpClient('/adobe/mcp/experience-governance', 'AEM-Governance', { userOnly: true });
+export const governanceMcp = createMcpClient('/adobe/mcp/experience-governance', 'AEM-Governance', {});
 export const discoveryMcp = createMcpClient('/adobe/mcp/discovery', 'AEM-Discovery', IMS);
 
 // ── AEM Development ──
