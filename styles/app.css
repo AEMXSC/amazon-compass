@@ -3116,6 +3116,10 @@ textarea:focus-visible,
     display: none !important;
   }
 
+  .main {
+    grid-column: 1;
+  }
+
   .chat-area {
     padding: 16px 12px;
   }
