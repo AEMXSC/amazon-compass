@@ -148,6 +148,8 @@ textarea:focus-visible,
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   padding: 12px 0;
+  position: relative;
+  z-index: 220;
 }
 
 .sidebar-top,
@@ -5562,7 +5564,7 @@ pre:hover .code-copy-btn {
   z-index: 210;
   display: flex;
   flex-direction: column;
-  transform: translateX(calc(-100% - 4px));
+  transform: translateX(calc(-100% - var(--sidebar-width) - 4px));
   transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
 }
