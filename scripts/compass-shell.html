@@ -13,6 +13,9 @@
         </button>
       </div>
       <div class="sidebar-bottom">
+        <button class="sidebar-btn" id="mcpManagerBtn" title="MCP Connections" aria-label="MCP Connections" aria-expanded="false" aria-controls="mcpPanel">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.7 10.7l6.6-4.4"/><path d="M8.7 13.3l6.6 4.4"/></svg>
+        </button>
         <button class="sidebar-btn" id="railSettingsBtn" title="Settings" aria-label="Settings">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         </button>
@@ -659,6 +662,65 @@
       </footer>
 
     </main>
+  </div>
+
+  <!-- MCP Manager Panel -->
+  <div id="mcpPanel" class="mcp-panel" role="region" aria-label="MCP Connections" aria-hidden="true">
+    <div class="mcp-panel-header">
+      <div class="mcp-panel-title">
+        <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.7 10.7l6.6-4.4"/><path d="M8.7 13.3l6.6 4.4"/></svg>
+        MCP Connections
+      </div>
+      <button type="button" class="mcp-panel-close" id="mcpPanelClose" aria-label="Close MCP panel">
+        <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div class="mcp-panel-search">
+      <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input type="search" id="mcpSearch" placeholder="Search servers…" autocomplete="off" aria-label="Search MCP servers">
+    </div>
+    <div class="mcp-panel-body" id="mcpPanelBody">
+      <div class="mcp-panel-loading">Loading connections…</div>
+    </div>
+    <div class="mcp-panel-footer">
+      <button type="button" class="mcp-add-btn" id="mcpAddCustom">
+        <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        Add Custom MCP Server
+      </button>
+    </div>
+  </div>
+
+  <!-- MCP Custom Server Modal -->
+  <div id="mcpCustomModal" class="mcp-custom-modal" role="dialog" aria-modal="true" aria-label="Add Custom MCP Server">
+    <div class="mcp-custom-content">
+      <div class="mcp-custom-header">
+        <span>Add Custom MCP Server</span>
+        <button type="button" class="mcp-custom-close" id="customMcpClose" aria-label="Close">
+          <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="mcp-custom-body">
+        <label for="customMcpName">Display Name</label>
+        <input type="text" id="customMcpName" placeholder="My CRM MCP" autocomplete="off">
+        <label for="customMcpUrl">Server URL</label>
+        <input type="url" id="customMcpUrl" placeholder="https://mcp.example.com/mcp" autocomplete="off">
+        <label for="customMcpAuth">Authentication</label>
+        <select id="customMcpAuth">
+          <option value="none">None</option>
+          <option value="bearer">Bearer Token</option>
+          <option value="api-key">API Key</option>
+        </select>
+        <div id="customMcpAuthValue" style="display:none">
+          <label id="customMcpAuthLabel" for="customMcpToken">Token</label>
+          <input type="password" id="customMcpToken" placeholder="Enter token…" autocomplete="off">
+        </div>
+        <p class="mcp-custom-error" id="customMcpError"></p>
+      </div>
+      <div class="mcp-custom-footer">
+        <button type="button" class="mcp-custom-btn-ghost" id="customMcpCancel">Cancel</button>
+        <button type="button" class="mcp-custom-btn-primary" id="customMcpSave">Connect &amp; Test</button>
+      </div>
+    </div>
   </div>
 
   <!-- Demo Admin Modal -->
